@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import Config, ConfigError, load_config
-from app.llm import GeminiBackend, LLMError, Turn
+from app.llm import LLMError, Turn, create_backend
 from app.prompts import build_system_prompt
 from app.tools import (TOOL_SPECS, RecommendationError, ToolBox, parse_recommendations_text,
                        validate_recommendations)
@@ -94,7 +94,7 @@ class Agent:
         self.config = config
         self.toolbox = toolbox or ToolBox(db_path, config.max_rows, config.max_tool_calls, config.query_timeout_s)
         self.system_prompt = build_system_prompt(schema_text(self.toolbox))
-        self.backend = backend or GeminiBackend(config, TOOL_SPECS, self.system_prompt)
+        self.backend = backend or create_backend(config, TOOL_SPECS, self.system_prompt)
 
     def close(self) -> None:
         self.toolbox.close()
@@ -105,6 +105,7 @@ class Agent:
         tb, be = self.toolbox, self.backend
         tb.reset()
         m: dict[str, Any] = {
+            "provider": self.config.provider,
             "model_configured": self.config.model,
             "fallback_models": list(self.config.fallback_models),
             "model": self.config.model,
@@ -279,13 +280,16 @@ def main(argv: list[str] | None = None) -> int:
             s.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="Agente de consulta de sucursales (Gemini + DuckDB).")
     ap.add_argument("--question", "-q", help="Pregunta única. Sin esto se abre el modo interactivo.")
-    ap.add_argument("--model", help="Modelo principal de Gemini (por defecto GEMINI_MODEL).")
+    ap.add_argument("--provider", choices=["gemini", "openrouter"], help="Proveedor LLM (por defecto LLM_PROVIDER).")
+    ap.add_argument("--model", help="Modelo principal (por defecto GEMINI_MODEL u OPENROUTER_MODEL).")
     ap.add_argument("--fallback-models", help="Modelos de respaldo separados por coma.")
     ap.add_argument("--verbose", "-v", action="store_true", help="Diagnósticos en stderr.")
     ap.add_argument("--log-file", type=Path, help="Archivo JSONL donde registrar métricas por pregunta.")
     args = ap.parse_args(argv)
     try:
-        kw = {"model": args.model}
+        kw: dict[str, Any] = {"model": args.model}
+        if args.provider is not None:
+            kw["provider"] = args.provider
         if args.fallback_models is not None:
             kw["fallback_models"] = args.fallback_models
         config = load_config(**kw)

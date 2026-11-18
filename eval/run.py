@@ -224,6 +224,7 @@ def run_evaluation(
     resume: bool = False,
     model: str | None = None,
     fallback_models: str | None = None,
+    provider: str | None = None,
     agent_factory: Any = None,
 ) -> dict:
     mode = "offline" if offline_answers_path else "real"
@@ -255,7 +256,9 @@ def run_evaluation(
         if agent_factory is not None:
             agent = agent_factory()
         else:
-            kw = {"model": model}
+            kw: dict[str, Any] = {"model": model}
+            if provider is not None:
+                kw["provider"] = provider
             if fallback_models is not None:
                 kw["fallback_models"] = fallback_models
             agent = Agent(load_config(**kw))
@@ -366,7 +369,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--offline-answers", type=Path, help="Archivo JSONL con respuestas guardadas/simuladas.")
     ap.add_argument("--out-dir", type=Path, help="Directorio de salida (por defecto eval/results/real o offline).")
     ap.add_argument("--resume", action="store_true", help="Reanuda sin repetir preguntas ya completadas.")
-    ap.add_argument("--model", help="Modelo principal de Gemini.")
+    ap.add_argument("--provider", choices=["gemini", "openrouter"], help="Proveedor LLM.")
+    ap.add_argument("--model", help="Modelo principal.")
     ap.add_argument("--fallback-models", help="Fallbacks separados por coma.")
     ap.add_argument("--criteria", type=Path, default=DEFAULT_CRITERIA)
     ap.add_argument("--pricing", type=Path, default=DEFAULT_PRICING)
@@ -394,6 +398,7 @@ def main(argv: list[str] | None = None) -> int:
             resume=args.resume,
             model=args.model,
             fallback_models=args.fallback_models,
+            provider=args.provider,
         )
     except ConfigError as e:
         print(f"Error de configuración: {e}", file=sys.stderr)

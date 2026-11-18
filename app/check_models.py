@@ -2,10 +2,11 @@
 
 Uso:
     python -m app.check_models
+    python -m app.check_models --provider openrouter
     python -m app.check_models --json
 
-Verifica ÚNICAMENTE los modelos configurados (principal + fallbacks) con una solicitud mínima
-que incluye una declaración de función de prueba para comprobar compatibilidad con function calling.
+Verifica ÚNICAMENTE los modelos configurados para el proveedor activo (principal + fallbacks)
+con una solicitud mínima que incluye una declaración de función de prueba.
 """
 from __future__ import annotations
 
@@ -15,11 +16,75 @@ import sys
 import time
 from typing import Any
 
-from app.config import Config, ConfigError, load_config
+from app.config import DEFAULT_OPENROUTER_BASE_URL, Config, ConfigError, load_config
 from app.llm import classify_error
 
 
-def check_configured_models(config: Config, client: Any = None) -> list[dict]:
+def _check_openrouter(config: Config, client: Any = None) -> list[dict]:
+    from openai import OpenAI
+
+    if client is None:
+        client = OpenAI(
+            api_key=config.api_key,
+            base_url=config.base_url or DEFAULT_OPENROUTER_BASE_URL,
+            timeout=config.request_timeout_s,
+            max_retries=0,
+        )
+    probe_tools = [{
+        "type": "function",
+        "function": {
+            "name": "ping",
+            "description": "Herramienta de prueba de compatibilidad (no requiere llamarse).",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    }]
+    resultados: list[dict] = []
+    for idx, model in enumerate(config.model_chain()):
+        rol = "principal" if idx == 0 else f"fallback_{idx}"
+        t0 = time.perf_counter()
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": "Respondé únicamente: ok"}],
+                tools=probe_tools,
+                temperature=0.0,
+                max_tokens=16,
+            )
+            lat = round(time.perf_counter() - t0, 3)
+            choices = getattr(resp, "choices", None) or []
+            msg = choices[0].message if choices else None
+            ok = msg is not None and bool((getattr(msg, "content", None) or "").strip() or getattr(msg, "tool_calls", None))
+            resultados.append({
+                "provider": "openrouter",
+                "rol": rol,
+                "model": getattr(resp, "model", None) or model,
+                "ok": ok,
+                "latency_s": lat,
+                "function_calling_ok": ok,
+                "supported_actions": ["chat.completions", "tools"],
+                "error_code": None if ok else "empty",
+                "error_category": None if ok else "empty_response",
+                "error_message": None if ok else "Respuesta vacía del modelo.",
+            })
+        except Exception as e:  # noqa: BLE001
+            lat = round(time.perf_counter() - t0, 3)
+            info = classify_error(e, config.api_key)
+            resultados.append({
+                "provider": "openrouter",
+                "rol": rol,
+                "model": model,
+                "ok": False,
+                "latency_s": lat,
+                "function_calling_ok": False,
+                "supported_actions": None,
+                "error_code": info.code,
+                "error_category": info.category,
+                "error_message": info.message,
+            })
+    return resultados
+
+
+def _check_gemini(config: Config, client: Any = None) -> list[dict]:
     from google import genai
     from google.genai import types
 
@@ -51,7 +116,7 @@ def check_configured_models(config: Config, client: Any = None) -> list[dict]:
         try:
             meta = client.models.get(model=model)
             actions = list(getattr(meta, "supported_actions", None) or [])
-        except Exception:  # noqa: BLE001 - si get falla se intenta igual generate_content para diagnosticar
+        except Exception:  # noqa: BLE001
             actions = None
 
         t0 = time.perf_counter()
@@ -66,6 +131,7 @@ def check_configured_models(config: Config, client: Any = None) -> list[dict]:
             txt = (getattr(resp, "text", None) or "").strip()
             ok = cand is not None and bool(txt or getattr(resp, "function_calls", None))
             resultados.append({
+                "provider": "gemini",
                 "rol": rol,
                 "model": model,
                 "ok": ok,
@@ -80,6 +146,7 @@ def check_configured_models(config: Config, client: Any = None) -> list[dict]:
             lat = round(time.perf_counter() - t0, 3)
             info = classify_error(e, config.api_key)
             resultados.append({
+                "provider": "gemini",
                 "rol": rol,
                 "model": model,
                 "ok": False,
@@ -93,17 +160,29 @@ def check_configured_models(config: Config, client: Any = None) -> list[dict]:
     return resultados
 
 
+def check_configured_models(config: Config, client: Any = None) -> list[dict]:
+    if config.provider == "openrouter":
+        return _check_openrouter(config, client=client)
+    return _check_gemini(config, client=client)
+
+
 def main(argv: list[str] | None = None) -> int:
     for s in (sys.stdout, sys.stderr):
         if hasattr(s, "reconfigure"):
             s.reconfigure(encoding="utf-8")
-    ap = argparse.ArgumentParser(description="Verifica disponibilidad de los modelos Gemini configurados.")
-    ap.add_argument("--model", help="Modelo principal (por defecto GEMINI_MODEL).")
+    ap = argparse.ArgumentParser(description="Verifica disponibilidad de los modelos configurados.")
+    ap.add_argument("--provider", choices=["gemini", "openrouter"], help="Proveedor LLM (por defecto LLM_PROVIDER).")
+    ap.add_argument("--model", help="Modelo principal.")
     ap.add_argument("--fallback-models", help="Fallbacks separados por coma.")
     ap.add_argument("--json", action="store_true", dest="as_json", help="Imprime salida JSON.")
     args = ap.parse_args(argv)
     try:
-        config = load_config(model=args.model, fallback_models=args.fallback_models)
+        kw: dict[str, Any] = {"model": args.model}
+        if args.provider is not None:
+            kw["provider"] = args.provider
+        if args.fallback_models is not None:
+            kw["fallback_models"] = args.fallback_models
+        config = load_config(**kw)
     except ConfigError as e:
         print(f"Error de configuración: {e}", file=sys.stderr)
         return 2
@@ -115,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
         for r in resultados:
             estado = "OK" if r["ok"] else f"ERROR [{r['error_category']} / {r['error_code']}]"
             fc = "sí" if r["function_calling_ok"] else "no"
-            print(f"[{r['rol']}] {r['model']}: {estado} | latencia={r['latency_s']}s | function_calling={fc}")
+            print(f"[{r['provider']}:{r['rol']}] {r['model']}: {estado} | latencia={r['latency_s']}s | function_calling={fc}")
             if r["error_message"]:
                 print(f"  detalle: {r['error_message']}")
     return 0 if any(r["ok"] for r in resultados) else 1

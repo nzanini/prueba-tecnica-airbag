@@ -2,7 +2,7 @@
 
 Prueba técnica de ML/AI Engineer (Airbag): agente LLM en español para que un gerente de *Café Tostadero* (120 sucursales, 4 regiones) consulte datos de ventas, quejas y capacitaciones en DuckDB mediante herramientas SQL.
 
-**Estado: Fase 3A (evaluador automático y preguntas desafiantes listos; sin corrida masiva contra Gemini).** Todavía no se ejecutó la evaluación completa de la fase 3B.
+**Estado: Fase 3C (soporte para Gemini directo y OpenRouter vía API compatible con OpenAI).** Todavía no se ejecutó la evaluación completa de las 18 preguntas.
 
 ## Estructura
 
@@ -28,15 +28,12 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Copiar `.env.example` a `.env` (no se versiona) y completar la clave:
+Copiar `.env.example` a `.env` (no se versiona) y elegir el proveedor con `LLM_PROVIDER` (`gemini` u `openrouter`):
 
-```dotenv
-GEMINI_API_KEY=tu_clave_de_gemini
-GEMINI_MODEL=gemini-3.8-flash
-GEMINI_FALLBACK_MODELS=gemini-3.6-flash,gemini-3.5-flash-lite
-```
+- **Gemini API directo (`LLM_PROVIDER=gemini`):** requiere `GEMINI_API_KEY` (no exige `OPENROUTER_API_KEY`). Usa `GEMINI_MODEL` (`gemini-3.8-flash`) y `GEMINI_FALLBACK_MODELS` (`gemini-3.6-flash,gemini-3.5-flash-lite`; `gemini-3.7-flash` está excluido).
+- **OpenRouter (`LLM_PROVIDER=openrouter`):** requiere `OPENROUTER_API_KEY` (no exige `GEMINI_API_KEY`). Usa `OPENROUTER_MODEL` (`google/gemini-3.8-flash`) y `OPENROUTER_BASE_URL` (`https://openrouter.ai/api/v1`). OpenRouter gestiona su propio enrutamiento entre proveedores, por lo que no aplica fallbacks ocultos ni cruza hacia tu clave de Gemini directo.
 
-`GEMINI_MODEL` define el modelo principal y `GEMINI_FALLBACK_MODELS` la lista ordenada de respaldo (`gemini-3.7-flash` está excluido). También podés pasarlos por variables de entorno o con `--model` / `--fallback-models`.
+También podés pasar `--provider`, `--model` o `--fallback-models` en el CLI.
 
 ## Preparación de datos y DuckDB
 
@@ -57,7 +54,15 @@ python -m app.check_models
 
 ```bash
 python -m app.agent --question "¿Cuántas sucursales tiene la región Costa?"
+python -m app.agent --provider openrouter -q "¿Cuántas sucursales tiene la región Costa?"
 python -m app.agent   # modo interactivo
+```
+
+Para diagnósticos y evaluación:
+
+```bash
+python -m app.check_models --provider openrouter
+python -m eval.run --provider openrouter --questions eval/preguntas_ejemplo.jsonl --ids P01,P03
 ```
 
 Opciones: `--model`, `--fallback-models`, `--verbose` (`-v`, imprime trazabilidad de intentos, fallbacks, latencia y tokens en `stderr` sin afectar `stdout`) y `--log-file <ruta.jsonl>`.

@@ -72,3 +72,12 @@ Las reglas no incluyen respuestas de `eval/preguntas_ejemplo.jsonl`; esas respue
 | E3 | Separación entre `accuracy_evaluated` (sobre preguntas evaluables) y `success_rate_total` (sobre el total) | Distingue la precisión analítica del agente cuando responde frente a fallos del proveedor o respuestas no evaluables. |
 | E4 | Costos configurables en `eval/pricing.json`; si la tarifa no está verificada o hubo intentos fallidos (`tokens_partial`), el costo se marca desconocido (`null`) | Evita inventar tarifas o asumir que una llamada fallida fue gratuita. |
 | E5 | Reportes reales (`eval/results/real/`) separados de los offline (`eval/results/offline/`) y guardado incremental con `--resume` | Nunca mezcla resultados simulados con métricas reales y permite reanudar evaluaciones interrumpidas por cuota sin repetir preguntas completadas. |
+
+## Integración con OpenRouter (Fase 3C)
+
+| # | Decisión | Razón |
+|---|---|---|
+| O1 | Selector explícito `LLM_PROVIDER=gemini\|openrouter` en `app/config.py`, sin fallback automático entre proveedores | Evita usar credenciales personales de Gemini cuando se evalúa con la clave de OpenRouter de Airbag y viceversa. |
+| O2 | `OpenRouterBackend` con el SDK oficial `openai` (`max_retries=0`, `timeout=12 s`) sobre `https://openrouter.ai/api/v1` y modelo por defecto `google/gemini-3.8-flash` | OpenRouter implementa su propio enrutamiento; desactivar reintentos internos del SDK mantiene la misma política de control de tiempos y observabilidad que en `GeminiBackend`. |
+| O3 | Clasificación de errores compartida (`classify_error`) incluyendo `402` (créditos/límite de gasto en OpenRouter) y sanitización de claves `sk-or-v1-...` | Falla de forma clara ante límites de gasto o claves vencidas sin reintentar ciegamente ni filtrar secretos. |
+| O4 | Registro de `provider`, `resp.model` real devuelto por OpenRouter, `prompt_tokens`/`completion_tokens` y `attempts` en `AgentResult` y `eval/run.py` | Mantiene trazabilidad completa de modelo, tokens, errores y costos (marcando costo como desconocido si no hay tarifa verificada en `eval/pricing.json` o hubo fallos parciales). |
