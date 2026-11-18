@@ -1,0 +1,262 @@
+issue_id,severidad,tabla,linea_csv,clave,detalle
+S-APERT,informativo,sucursales,16,S015,apertura=2026-03-16
+S-APERT,informativo,sucursales,34,S033,apertura=2026-03-16
+S-APERT,informativo,sucursales,38,S037,apertura=2026-03-16
+S-APERT,informativo,sucursales,60,S059,apertura=2026-03-16
+S-APERT,informativo,sucursales,77,S076,apertura=2026-03-17
+S-APERT,informativo,sucursales,83,S082,apertura=2026-03-17
+V-NEG,confirmado,ventas_diarias,5096,2026-02-18 S085,pedidos=-5
+V-NEG,confirmado,ventas_diarias,6172,2026-02-28 S016,pedidos=-44
+V-NEG,confirmado,ventas_diarias,7745,2026-03-13 S112,pedidos=-14
+V-EXT,sospechoso,ventas_diarias,605,2026-01-10 S036,"pedidos=99999 (mediana sucursal=233, z=4205.8)"
+V-EXT,sospechoso,ventas_diarias,2229,2026-01-24 S066,"pedidos=703 (mediana sucursal=482, z=4.1)"
+V-EXT,sospechoso,ventas_diarias,4077,2026-02-09 S092,"pedidos=99999 (mediana sucursal=552, z=1427.2)"
+V-EXT,sospechoso,ventas_diarias,6212,2026-02-28 S058,"pedidos=526 (mediana sucursal=347, z=4.7)"
+V-EXT,sospechoso,ventas_diarias,8061,2026-03-16 S081,"pedidos=99999 (mediana sucursal=258, z=3129.1)"
+V-EXT,sospechoso,ventas_diarias,8494,2026-03-20 S035,"pedidos=99999 (mediana sucursal=178, z=5179.2)"
+V-EXT,sospechoso,ventas_diarias,9399,2026-03-27 S100,"pedidos=99999 (mediana sucursal=469, z=1579.6)"
+V-EXT,sospechoso,ventas_diarias,9455,2026-03-28 S036,"pedidos=357 (mediana sucursal=233, z=5.2)"
+V-OUT,sospechoso,ventas_diarias,608,2026-01-10 S040,"pedidos=312 (mediana sucursal=228, z=3.8)"
+V-OUT,sospechoso,ventas_diarias,620,2026-01-10 S052,"pedidos=1280 (mediana sucursal=893, z=3.7)"
+V-OUT,sospechoso,ventas_diarias,2081,2026-01-23 S029,"pedidos=714 (mediana sucursal=490, z=4.0)"
+V-OUT,sospechoso,ventas_diarias,2176,2026-01-24 S009,"pedidos=323 (mediana sucursal=231, z=3.8)"
+V-OUT,sospechoso,ventas_diarias,2203,2026-01-24 S039,"pedidos=460 (mediana sucursal=339, z=3.5)"
+V-OUT,sospechoso,ventas_diarias,2271,2026-01-24 S110,"pedidos=400 (mediana sucursal=293, z=3.6)"
+V-OUT,sospechoso,ventas_diarias,3785,2026-02-07 S023,"pedidos=632 (mediana sucursal=438, z=3.8)"
+V-OUT,sospechoso,ventas_diarias,3787,2026-02-07 S025,"pedidos=297 (mediana sucursal=208, z=3.8)"
+V-OUT,sospechoso,ventas_diarias,3792,2026-02-07 S030,"pedidos=368 (mediana sucursal=264, z=4.7)"
+V-OUT,sospechoso,ventas_diarias,3809,2026-02-07 S049,"pedidos=371 (mediana sucursal=256, z=4.7)"
+V-OUT,sospechoso,ventas_diarias,3820,2026-02-07 S061,"pedidos=577 (mediana sucursal=411, z=3.5)"
+V-OUT,sospechoso,ventas_diarias,3842,2026-02-07 S085,"pedidos=544 (mediana sucursal=375, z=3.7)"
+V-OUT,sospechoso,ventas_diarias,3864,2026-02-07 S107,"pedidos=484 (mediana sucursal=322, z=4.1)"
+V-OUT,sospechoso,ventas_diarias,3871,2026-02-07 S114,"pedidos=489 (mediana sucursal=363, z=3.6)"
+V-OUT,sospechoso,ventas_diarias,4634,2026-02-14 S078,"pedidos=250 (mediana sucursal=181, z=3.9)"
+V-OUT,sospechoso,ventas_diarias,4643,2026-02-14 S088,"pedidos=700 (mediana sucursal=464, z=4.3)"
+V-OUT,sospechoso,ventas_diarias,4645,2026-02-14 S090,"pedidos=312 (mediana sucursal=203, z=4.1)"
+V-OUT,sospechoso,ventas_diarias,5318,2026-02-20 S078,"pedidos=249 (mediana sucursal=181, z=3.9)"
+V-OUT,sospechoso,ventas_diarias,5365,2026-02-21 S006,"pedidos=266 (mediana sucursal=187, z=3.8)"
+V-OUT,sospechoso,ventas_diarias,5437,2026-02-21 S084,"pedidos=580 (mediana sucursal=397, z=3.9)"
+V-OUT,sospechoso,ventas_diarias,6185,2026-02-28 S029,"pedidos=733 (mediana sucursal=490, z=4.4)"
+V-OUT,sospechoso,ventas_diarias,6218,2026-02-28 S065,"pedidos=270 (mediana sucursal=195, z=3.9)"
+V-OUT,sospechoso,ventas_diarias,6233,2026-02-28 S081,"pedidos=385 (mediana sucursal=258, z=4.0)"
+V-OUT,sospechoso,ventas_diarias,6984,2026-03-07 S030,"pedidos=345 (mediana sucursal=264, z=3.7)"
+V-OUT,sospechoso,ventas_diarias,6995,2026-03-07 S043,"pedidos=252 (mediana sucursal=178, z=3.8)"
+V-OUT,sospechoso,ventas_diarias,6999,2026-03-07 S047,"pedidos=162 (mediana sucursal=120, z=3.8)"
+V-OUT,sospechoso,ventas_diarias,7001,2026-03-07 S049,"pedidos=348 (mediana sucursal=256, z=3.8)"
+V-OUT,sospechoso,ventas_diarias,7010,2026-03-07 S058,"pedidos=485 (mediana sucursal=347, z=3.7)"
+V-OUT,sospechoso,ventas_diarias,7016,2026-03-07 S065,"pedidos=283 (mediana sucursal=195, z=4.6)"
+V-OUT,sospechoso,ventas_diarias,7759,2026-03-14 S006,"pedidos=272 (mediana sucursal=187, z=4.1)"
+V-OUT,sospechoso,ventas_diarias,7786,2026-03-14 S035,"pedidos=265 (mediana sucursal=178, z=4.5)"
+V-OUT,sospechoso,ventas_diarias,7814,2026-03-14 S065,"pedidos=278 (mediana sucursal=195, z=4.3)"
+V-OUT,sospechoso,ventas_diarias,7831,2026-03-14 S084,"pedidos=604 (mediana sucursal=397, z=4.4)"
+V-OUT,sospechoso,ventas_diarias,7863,2026-03-14 S116,"pedidos=795 (mediana sucursal=570, z=3.6)"
+V-OUT,sospechoso,ventas_diarias,9432,2026-03-28 S013,"pedidos=264 (mediana sucursal=184, z=4.0)"
+V-OUT,sospechoso,ventas_diarias,9476,2026-03-28 S057,"pedidos=416 (mediana sucursal=295, z=3.8)"
+Q-DUPX,confirmado,quejas,139,Q00098,copia exacta de la fila 101
+Q-DUPX,confirmado,quejas,590,Q00570,copia exacta de la fila 574
+Q-DUPX,confirmado,quejas,793,Q00744,copia exacta de la fila 774
+Q-DUPX,confirmado,quejas,863,Q00829,copia exacta de la fila 847
+Q-DUPX,confirmado,quejas,1755,Q01705,copia exacta de la fila 1739
+Q-DUPX,confirmado,quejas,2033,Q01942,copia exacta de la fila 1999
+Q-DUPX,confirmado,quejas,2462,Q02382,copia exacta de la fila 2455
+Q-DUPX,confirmado,quejas,3054,Q02962,copia exacta de la fila 2972
+Q-DUPX,confirmado,quejas,3714,Q03597,copia exacta de la fila 3664
+Q-DUPX,confirmado,quejas,4322,Q04195,copia exacta de la fila 4250
+Q-DUPX,confirmado,quejas,4460,Q04330,copia exacta de la fila 4440
+Q-DUPX,confirmado,quejas,4704,Q04567,copia exacta de la fila 4701
+Q-DUPX,confirmado,quejas,4785,Q04644,copia exacta de la fila 4756
+Q-DUPX,confirmado,quejas,5131,Q04933,copia exacta de la fila 5082
+Q-DUPX,confirmado,quejas,5396,Q05231,copia exacta de la fila 5387
+Q-DUPX,confirmado,quejas,5913,Q05698,copia exacta de la fila 5867
+Q-DUPX,confirmado,quejas,6367,Q06158,copia exacta de la fila 6336
+Q-DUPX,confirmado,quejas,6362,Q06182,copia exacta de la fila 6335
+Q-DUPX,confirmado,quejas,6575,Q06391,copia exacta de la fila 6562
+Q-DUPX,confirmado,quejas,145,Q00120,copia exacta de la fila 124
+Q-DUPX,confirmado,quejas,384,Q00370,copia exacta de la fila 380
+Q-DUPX,confirmado,quejas,687,Q00630,copia exacta de la fila 654
+Q-DUPX,confirmado,quejas,778,Q00748,copia exacta de la fila 724
+Q-DUPX,confirmado,quejas,2268,Q02180,copia exacta de la fila 2242
+Q-DUPX,confirmado,quejas,2763,Q02675,copia exacta de la fila 2718
+Q-DUPX,confirmado,quejas,3374,Q03277,copia exacta de la fila 3326
+Q-DUPX,confirmado,quejas,6036,Q05840,copia exacta de la fila 6009
+Q-DUPX,confirmado,quejas,6357,Q06175,copia exacta de la fila 6353
+Q-DUPX,confirmado,quejas,6750,Q06510,copia exacta de la fila 6698
+Q-DUPX,confirmado,quejas,1223,Q01159,copia exacta de la fila 1199
+Q-DUPX,confirmado,quejas,1212,Q01172,copia exacta de la fila 1170
+Q-DUPX,confirmado,quejas,1466,Q01361,copia exacta de la fila 1403
+Q-DUPX,confirmado,quejas,3051,Q02959,copia exacta de la fila 3013
+Q-DUPX,confirmado,quejas,3727,Q03610,copia exacta de la fila 3687
+Q-DUPX,confirmado,quejas,3939,Q03803,copia exacta de la fila 3923
+Q-DUPX,confirmado,quejas,4824,Q04680,copia exacta de la fila 4798
+Q-DUPX,confirmado,quejas,5148,Q04932,copia exacta de la fila 5081
+Q-DUPX,confirmado,quejas,5192,Q05028,copia exacta de la fila 5180
+Q-DUPX,confirmado,quejas,5889,Q05670,copia exacta de la fila 5838
+Q-DUPX,confirmado,quejas,80,Q00077,copia exacta de la fila 3
+Q-DUPX,confirmado,quejas,1131,Q01034,copia exacta de la fila 1070
+Q-DUPX,confirmado,quejas,1939,Q01869,copia exacta de la fila 1922
+Q-DUPX,confirmado,quejas,2778,Q02690,copia exacta de la fila 2744
+Q-DUPX,confirmado,quejas,3596,Q03487,copia exacta de la fila 3591
+Q-DUPX,confirmado,quejas,3945,Q03821,copia exacta de la fila 3942
+Q-DUPX,confirmado,quejas,4828,Q04625,copia exacta de la fila 4765
+Q-DUPX,confirmado,quejas,4903,Q04729,copia exacta de la fila 4874
+Q-DUPX,confirmado,quejas,5149,Q04988,copia exacta de la fila 5138
+Q-DUPX,confirmado,quejas,6315,Q06138,copia exacta de la fila 6309
+Q-DUPX,confirmado,quejas,595,Q00548,copia exacta de la fila 567
+Q-DUPX,confirmado,quejas,576,Q00556,copia exacta de la fila 562
+Q-DUPX,confirmado,quejas,658,Q00628,copia exacta de la fila 651
+Q-DUPX,confirmado,quejas,692,Q00666,copia exacta de la fila 652
+Q-DUPX,confirmado,quejas,913,Q00877,copia exacta de la fila 902
+Q-DUPX,confirmado,quejas,2675,Q02576,copia exacta de la fila 2658
+Q-DUPX,confirmado,quejas,2756,Q02646,copia exacta de la fila 2731
+Q-DUPX,confirmado,quejas,2791,Q02663,copia exacta de la fila 2750
+Q-DUPX,confirmado,quejas,2999,Q02876,copia exacta de la fila 2965
+Q-DUPX,confirmado,quejas,3534,Q03430,copia exacta de la fila 3501
+Q-DUPX,confirmado,quejas,3554,Q03448,copia exacta de la fila 3537
+Q-DUPX,confirmado,quejas,4245,Q04120,copia exacta de la fila 4222
+Q-DUPX,confirmado,quejas,4267,Q04140,copia exacta de la fila 4261
+Q-DUPX,confirmado,quejas,4570,Q04356,copia exacta de la fila 4486
+Q-DUPX,confirmado,quejas,4622,Q04489,copia exacta de la fila 4607
+Q-DUPX,confirmado,quejas,4726,Q04570,copia exacta de la fila 4705
+Q-DUPX,confirmado,quejas,5900,Q05707,copia exacta de la fila 5876
+Q-DUPX,confirmado,quejas,5897,Q05726,copia exacta de la fila 5857
+Q-DUPX,confirmado,quejas,6313,Q06116,copia exacta de la fila 6291
+Q-DUPX,confirmado,quejas,6668,Q06481,copia exacta de la fila 6650
+Q-DUPX,confirmado,quejas,120,Q00080,copia exacta de la fila 83
+Q-DUPX,confirmado,quejas,1947,Q01891,copia exacta de la fila 1924
+Q-DUPX,confirmado,quejas,2246,Q02184,copia exacta de la fila 2222
+Q-DUPX,confirmado,quejas,2364,Q02281,copia exacta de la fila 2347
+Q-DUPX,confirmado,quejas,3177,Q03065,copia exacta de la fila 3158
+Q-DUPX,confirmado,quejas,3495,Q03389,copia exacta de la fila 3491
+Q-DUPX,confirmado,quejas,3638,Q03497,copia exacta de la fila 3606
+Q-DUPX,confirmado,quejas,4387,Q04241,copia exacta de la fila 4369
+Q-DUPX,confirmado,quejas,4738,Q04600,copia exacta de la fila 4733
+Q-DUPX,confirmado,quejas,762,Q00732,copia exacta de la fila 758
+Q-DUPX,confirmado,quejas,1111,Q01074,copia exacta de la fila 1103
+Q-DUPX,confirmado,quejas,1242,Q01161,copia exacta de la fila 1201
+Q-DUPX,confirmado,quejas,2001,Q01944,copia exacta de la fila 1978
+Q-DUPX,confirmado,quejas,2094,Q02009,copia exacta de la fila 2068
+Q-DUPX,confirmado,quejas,2374,Q02253,copia exacta de la fila 2319
+Q-DUPX,confirmado,quejas,2375,Q02306,copia exacta de la fila 2303
+Q-DUPX,confirmado,quejas,2423,Q02350,copia exacta de la fila 2404
+Q-DUPX,confirmado,quejas,3656,Q03486,copia exacta de la fila 3595
+Q-DUPX,confirmado,quejas,3639,Q03515,copia exacta de la fila 3625
+Q-DUPX,confirmado,quejas,5351,Q05196,copia exacta de la fila 5336
+Q-DUPX,confirmado,quejas,284,Q00237,copia exacta de la fila 247
+Q-DUPX,confirmado,quejas,283,Q00272,copia exacta de la fila 257
+Q-DUPX,confirmado,quejas,848,Q00814,copia exacta de la fila 820
+Q-DUPX,confirmado,quejas,940,Q00904,copia exacta de la fila 886
+Q-DUPX,confirmado,quejas,2365,Q02233,copia exacta de la fila 2297
+Q-DUPX,confirmado,quejas,2534,Q02456,copia exacta de la fila 2513
+Q-DUPX,confirmado,quejas,2612,Q02524,copia exacta de la fila 2603
+Q-DUPX,confirmado,quejas,2787,Q02699,copia exacta de la fila 2741
+Q-DUPX,confirmado,quejas,3381,Q03283,copia exacta de la fila 3379
+Q-DUPX,confirmado,quejas,3466,Q03366,copia exacta de la fila 3414
+Q-DUPX,confirmado,quejas,3484,Q03368,copia exacta de la fila 3468
+Q-DUPX,confirmado,quejas,3853,Q03735,copia exacta de la fila 3821
+Q-DUPX,confirmado,quejas,4821,Q04677,copia exacta de la fila 4803
+Q-DUPX,confirmado,quejas,5067,Q04918,copia exacta de la fila 5047
+Q-DUPX,confirmado,quejas,5489,Q05328,copia exacta de la fila 5467
+Q-DUPX,confirmado,quejas,5604,Q05422,copia exacta de la fila 5584
+Q-DUPX,confirmado,quejas,5691,Q05469,copia exacta de la fila 5632
+Q-DUPX,confirmado,quejas,5833,Q05651,copia exacta de la fila 5818
+Q-DUPX,confirmado,quejas,6115,Q05943,copia exacta de la fila 6086
+Q-DUPX,confirmado,quejas,6644,Q06413,copia exacta de la fila 6597
+Q-DUPX,confirmado,quejas,764,Q00734,copia exacta de la fila 746
+Q-DUPX,confirmado,quejas,1160,Q01100,copia exacta de la fila 1138
+Q-DUPX,confirmado,quejas,1501,Q01451,copia exacta de la fila 1494
+Q-DUPX,confirmado,quejas,2616,Q02534,copia exacta de la fila 2613
+Q-DUPX,confirmado,quejas,3563,Q03457,copia exacta de la fila 3542
+Q-DUPX,confirmado,quejas,5974,Q05797,copia exacta de la fila 5970
+Q-DUPX,confirmado,quejas,6051,Q05874,copia exacta de la fila 6043
+Q-DUPX,confirmado,quejas,6211,Q06038,copia exacta de la fila 6195
+Q-DUPX,confirmado,quejas,6832,Q06647,copia exacta de la fila 6798
+Q-DUPX,confirmado,quejas,501,Q00435,copia exacta de la fila 449
+Q-DUPX,confirmado,quejas,600,Q00577,copia exacta de la fila 598
+Q-DUPX,confirmado,quejas,2149,Q02063,copia exacta de la fila 2123
+Q-DUPX,confirmado,quejas,2536,Q02458,copia exacta de la fila 2530
+Q-DUPX,confirmado,quejas,2552,Q02473,copia exacta de la fila 2509
+Q-DUPX,confirmado,quejas,3692,Q03575,copia exacta de la fila 3686
+Q-DUPX,confirmado,quejas,4727,Q04579,copia exacta de la fila 4714
+Q-DUPX,confirmado,quejas,5486,Q05325,copia exacta de la fila 5448
+Q-DUPX,confirmado,quejas,5553,Q05391,copia exacta de la fila 5522
+Q-DUPX,confirmado,quejas,5816,Q05649,copia exacta de la fila 5797
+Q-DUPX,confirmado,quejas,6044,Q05836,copia exacta de la fila 6005
+Q-DUPX,confirmado,quejas,6255,Q06082,copia exacta de la fila 6241
+Q-DUPX,confirmado,quejas,6641,Q06430,copia exacta de la fila 6614
+Q-DUPX,confirmado,quejas,697,Q00671,copia exacta de la fila 614
+Q-DUPX,confirmado,quejas,2261,Q02137,copia exacta de la fila 2198
+Q-DUPX,confirmado,quejas,2348,Q02282,copia exacta de la fila 2298
+Q-DUPX,confirmado,quejas,2422,Q02322,copia exacta de la fila 2392
+Q-DUPX,confirmado,quejas,3115,Q02994,copia exacta de la fila 3086
+Q-DUPX,confirmado,quejas,3650,Q03538,copia exacta de la fila 3579
+Q-DUPX,confirmado,quejas,4329,Q04176,copia exacta de la fila 4303
+Q-DUPX,confirmado,quejas,4813,Q04618,copia exacta de la fila 4758
+Q-DUPX,confirmado,quejas,5372,Q05148,copia exacta de la fila 5302
+Q-DUPX,confirmado,quejas,6050,Q05851,copia exacta de la fila 6020
+Q-DUPX,confirmado,quejas,6482,Q06250,copia exacta de la fila 6431
+Q-DUPX,confirmado,quejas,161,Q00135,copia exacta de la fila 140
+Q-DUPX,confirmado,quejas,524,Q00450,copia exacta de la fila 464
+Q-DUPX,confirmado,quejas,1545,Q01447,copia exacta de la fila 1490
+Q-DUPX,confirmado,quejas,1642,Q01518,copia exacta de la fila 1564
+Q-DUPX,confirmado,quejas,1758,Q01708,copia exacta de la fila 1683
+Q-DUPX,confirmado,quejas,2471,Q02396,copia exacta de la fila 2468
+Q-DUPX,confirmado,quejas,3300,Q03204,copia exacta de la fila 3292
+Q-DUPX,confirmado,quejas,3427,Q03324,copia exacta de la fila 3423
+Q-DUPX,confirmado,quejas,3614,Q03471,copia exacta de la fila 3578
+Q-DUPX,confirmado,quejas,3880,Q03726,copia exacta de la fila 3844
+Q-DUPX,confirmado,quejas,4658,Q04521,copia exacta de la fila 4654
+Q-DUPX,confirmado,quejas,5052,Q04883,copia exacta de la fila 5030
+Q-DUPX,confirmado,quejas,6546,Q06363,copia exacta de la fila 6514
+Q-DUPX,confirmado,quejas,323,Q00245,copia exacta de la fila 255
+Q-DUPX,confirmado,quejas,496,Q00407,copia exacta de la fila 421
+Q-DUPX,confirmado,quejas,783,Q00719,copia exacta de la fila 747
+Q-DUPX,confirmado,quejas,1868,Q01816,copia exacta de la fila 1866
+Q-DUPX,confirmado,quejas,2421,Q02333,copia exacta de la fila 2403
+Q-DUPX,confirmado,quejas,2456,Q02383,copia exacta de la fila 2390
+Q-DUPX,confirmado,quejas,2542,Q02393,copia exacta de la fila 2467
+Q-DUPX,confirmado,quejas,2614,Q02500,copia exacta de la fila 2579
+Q-DUPX,confirmado,quejas,2751,Q02664,copia exacta de la fila 2730
+Q-DUPX,confirmado,quejas,3872,Q03700,copia exacta de la fila 3817
+Q-DUPX,confirmado,quejas,4235,Q04110,copia exacta de la fila 4185
+Q-DUPX,confirmado,quejas,4896,Q04727,copia exacta de la fila 4872
+Q-DUPX,confirmado,quejas,6198,Q06025,copia exacta de la fila 6180
+Q-DUPX,confirmado,quejas,6256,Q06077,copia exacta de la fila 6250
+Q-DUPX,confirmado,quejas,6327,Q06150,copia exacta de la fila 6282
+Q-DUPX,confirmado,quejas,190,Q00157,copia exacta de la fila 164
+Q-DUPX,confirmado,quejas,2031,Q01926,copia exacta de la fila 1983
+Q-DUPX,confirmado,quejas,3476,Q03298,copia exacta de la fila 3396
+Q-DUPX,confirmado,quejas,4820,Q04676,copia exacta de la fila 4767
+Q-DUPX,confirmado,quejas,5418,Q05259,copia exacta de la fila 5405
+Q-DUPX,confirmado,quejas,5881,Q05690,copia exacta de la fila 5859
+Q-DUPX,confirmado,quejas,75,Q00072,copia exacta de la fila 10
+Q-DUPX,confirmado,quejas,231,Q00221,copia exacta de la fila 194
+Q-DUPX,confirmado,quejas,749,Q00691,copia exacta de la fila 717
+Q-DUPX,confirmado,quejas,3570,Q03459,copia exacta de la fila 3565
+Q-DUPX,confirmado,quejas,3684,Q03569,copia exacta de la fila 3668
+Q-DUPX,confirmado,quejas,5290,Q05091,copia exacta de la fila 5244
+Q-DUPX,confirmado,quejas,5416,Q05235,copia exacta de la fila 5391
+Q-DUPX,confirmado,quejas,212,Q00202,copia exacta de la fila 182
+Q-DUPX,confirmado,quejas,603,Q00581,copia exacta de la fila 540
+Q-DUPX,confirmado,quejas,1506,Q01461,copia exacta de la fila 1500
+Q-DUPX,confirmado,quejas,1697,Q01620,copia exacta de la fila 1667
+Q-DUPX,confirmado,quejas,1902,Q01849,copia exacta de la fila 1892
+Q-DUPX,confirmado,quejas,1925,Q01871,copia exacta de la fila 1865
+Q-DUPX,confirmado,quejas,1948,Q01892,copia exacta de la fila 1934
+Q-DUPX,confirmado,quejas,3251,Q03109,copia exacta de la fila 3203
+Q-DUPX,confirmado,quejas,3947,Q03815,copia exacta de la fila 3935
+Q-DUPX,confirmado,quejas,4523,Q04392,copia exacta de la fila 4519
+Q-DUPX,confirmado,quejas,4749,Q04610,copia exacta de la fila 4744
+Q-DUPX,confirmado,quejas,5634,Q05452,copia exacta de la fila 5615
+Q-DUPX,confirmado,quejas,5673,Q05462,copia exacta de la fila 5625
+Q-DUPX,confirmado,quejas,6408,Q06227,copia exacta de la fila 6358
+Q-DUPX,confirmado,quejas,6409,Q06228,copia exacta de la fila 6396
+Q-DUPX,confirmado,quejas,6703,Q06515,copia exacta de la fila 6690
+Q-SINVTA,sospechoso,quejas,3789,Q03672,sucursal-día 2026-02-18 S085: pedidos=-5
+Q-SINVTA,sospechoso,quejas,4494,Q04364,sucursal-día 2026-02-28 S016: pedidos=-44
+X-SINQUE,informativo,sucursales,83,S082,sin quejas
+R-PARC,informativo,ventas_diarias,,S033,días con ventas=14
+R-PARC,informativo,ventas_diarias,,S015,días con ventas=14
+R-PARC,informativo,ventas_diarias,,S076,días con ventas=13
+R-PARC,informativo,ventas_diarias,,S037,días con ventas=14
+R-PARC,informativo,ventas_diarias,,S059,días con ventas=14
+R-PARC,informativo,ventas_diarias,,S082,días con ventas=13

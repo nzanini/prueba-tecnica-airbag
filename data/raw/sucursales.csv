@@ -1,0 +1,121 @@
+sucursal_id,nombre,region,ciudad,fecha_apertura
+S001,Tostadero Villahermosa Av. Reforma,Sur,Villahermosa,2020-10-19
+S002,Tostadero Puerto Vallarta Av. Independencia,Costa,Puerto Vallarta,2018-05-25
+S003,Tostadero Cancún Av. Morelos,Costa,Cancún,2020-01-31
+S004,Tostadero San Cristóbal de las Casas Plaza Principal,Sur,San Cristóbal de las Casas,2023-07-11
+S005,Tostadero Cancún Jardín Principal,Costa,Cancún,2020-05-22
+S006,Tostadero Mazatlán Jardín Principal,Costa,Mazatlán,2019-06-02
+S007,Tostadero Oaxaca Av. Reforma,Sur,Oaxaca,2020-11-09
+S008,Tostadero Chihuahua Av. Insurgentes,Norte,Chihuahua,2024-07-21
+S009,Tostadero Campeche Av. Morelos,Sur,Campeche,2024-05-13
+S010,Tostadero Hermosillo Av. Independencia,Norte,Hermosillo,2024-10-03
+S011,Tostadero Veracruz Av. Reforma,Costa,Veracruz,2022-06-14
+S012,Tostadero Villahermosa Av. Insurgentes,Sur,Villahermosa,2023-04-23
+S013,Tostadero Villahermosa Av. Morelos,Sur,Villahermosa,2022-02-20
+S014,Tostadero Querétaro Av. Insurgentes,Centro,Querétaro,2021-11-28
+S015,Tostadero Querétaro Los Pinos,Centro,Querétaro,2026-03-16
+S016,Tostadero Monterrey Av. Insurgentes,Norte,Monterrey,2021-07-10
+S017,Tostadero La Paz Av. Revolución,Costa,La Paz,2019-01-08
+S018,Tostadero La Paz Av. Insurgentes,Costa,La Paz,2018-05-04
+S019,Tostadero Cancún Av. Juárez,Costa,Cancún,2020-07-02
+S020,Tostadero Puebla Av. Morelos,Centro,Puebla,2025-06-22
+S021,Tostadero Ciudad de México Av. Hidalgo,Centro,Ciudad de México,2025-10-04
+S022,Tostadero Mérida Plaza Principal,Sur,Mérida,2022-12-05
+S023,Tostadero Guadalajara Av. Universidad,Centro,Guadalajara,2025-05-09
+S024,Tostadero Guadalajara Los Pinos,Centro,Guadalajara,2020-10-27
+S025,Tostadero Guadalajara Av. Hidalgo,Centro,Guadalajara,2025-05-05
+S026,Tostadero Tuxtla Gutiérrez Av. Juárez,Sur,Tuxtla Gutiérrez,2019-12-13
+S027,Tostadero Cancún Av. Reforma,Costa,Cancún,2022-09-15
+S028,Tostadero León Av. Independencia,Centro,León,2024-12-14
+S029,Tostadero Mazatlán Av. Insurgentes,Costa,Mazatlán,2019-01-30
+S030,Tostadero Guadalajara Jardín Principal,Centro,Guadalajara,2019-06-13
+S031,Tostadero León Av. Juárez,Centro,León,2022-04-08
+S032,Tostadero Campeche Av. Universidad,Sur,Campeche,2025-09-30
+S033,Tostadero Saltillo Av. Reforma,Norte,Saltillo,2026-03-16
+S034,Tostadero Acapulco Plaza Principal,Costa,Acapulco,2021-06-10
+S035,Tostadero Veracruz Los Pinos,Costa,Veracruz,2025-01-10
+S036,Tostadero Puerto Vallarta Av. Revolución,Costa,Puerto Vallarta,2022-07-29
+S037,Tostadero Campeche Av. Independencia,Sur,Campeche,2026-03-16
+S038,Tostadero San Cristóbal de las Casas Av. Hidalgo,Sur,San Cristóbal de las Casas,2024-08-13
+S039,Tostadero Mérida Av. Juárez,Sur,Mérida,2023-11-18
+S040,Tostadero Querétaro Av. Independencia,Centro,Querétaro,2020-12-12
+S041,Tostadero Monterrey Av. Hidalgo,Norte,Monterrey,2023-08-21
+S042,Tostadero Querétaro Av. Juárez,Centro,Querétaro,2023-08-23
+S043,Tostadero Puebla Av. Revolución,Centro,Puebla,2023-03-15
+S044,Tostadero Acapulco Av. Insurgentes,Costa,Acapulco,2021-11-01
+S045,Tostadero Toluca Av. Juárez,Centro,Toluca,2023-02-18
+S046,Tostadero Chihuahua Av. Independencia,Norte,Chihuahua,2025-06-24
+S047,Tostadero La Paz Plaza Principal,Costa,La Paz,2023-03-09
+S048,Tostadero Torreón Av. Juárez,Norte,Torreón,2021-07-15
+S049,Tostadero Mérida Av. Reforma,Sur,Mérida,2019-07-06
+S050,Tostadero Ciudad Juárez Jardín Principal,Norte,Ciudad Juárez,2023-07-25
+S051,Tostadero Veracruz Av. Revolución,Costa,Veracruz,2021-12-31
+S052,Tostadero Puebla Av. Reforma,Centro,Puebla,2025-09-04
+S053,Tostadero Oaxaca Av. Hidalgo,Sur,Oaxaca,2021-08-12
+S054,Tostadero Puebla Av. Universidad,Centro,Puebla,2021-05-08
+S055,Tostadero Mérida Av. Independencia,Sur,Mérida,2018-02-07
+S056,Tostadero Toluca Los Pinos,Centro,Toluca,2018-09-05
+S057,Tostadero Saltillo Av. Morelos,Norte,Saltillo,2018-04-28
+S058,Tostadero Veracruz Jardín Principal,Costa,Veracruz,2021-03-05
+S059,Tostadero Ciudad de México Av. Revolución,Centro,Ciudad de México,2026-03-16
+S060,Tostadero San Cristóbal de las Casas Av. Reforma,Sur,San Cristóbal de las Casas,2021-11-11
+S061,Tostadero Hermosillo Av. Universidad,Norte,Hermosillo,2022-07-09
+S062,Tostadero Tuxtla Gutiérrez Av. Universidad,Sur,Tuxtla Gutiérrez,2023-05-28
+S063,Tostadero Puerto Vallarta Av. Reforma,Costa,Puerto Vallarta,2018-03-09
+S064,Tostadero Campeche Av. Hidalgo,Sur,Campeche,2023-02-11
+S065,Tostadero Acapulco Jardín Principal,Costa,Acapulco,2020-02-18
+S066,Tostadero Guadalajara Av. Juárez,Centro,Guadalajara,2025-08-27
+S067,Tostadero Saltillo Av. Universidad,Norte,Saltillo,2025-10-02
+S068,Tostadero Monterrey Av. Morelos,Norte,Monterrey,2023-10-23
+S069,Tostadero Torreón Av. Reforma,Norte,Torreón,2021-11-17
+S070,Tostadero Hermosillo Av. Morelos,Norte,Hermosillo,2020-10-27
+S071,Tostadero Tuxtla Gutiérrez Av. Insurgentes,Sur,Tuxtla Gutiérrez,2021-11-22
+S072,Tostadero Oaxaca Av. Universidad,Sur,Oaxaca,2022-01-04
+S073,Tostadero Tuxtla Gutiérrez Av. Revolución,Sur,Tuxtla Gutiérrez,2023-08-02
+S074,Tostadero Oaxaca Jardín Principal,Sur,Oaxaca,2019-06-17
+S075,Tostadero Puebla Av. Hidalgo,Centro,Puebla,2022-08-16
+S076,Tostadero Chihuahua Los Pinos,Norte,Chihuahua,2026-03-17
+S077,Tostadero Ciudad de México Av. Juárez,Centro,Ciudad de México,2024-07-18
+S078,Tostadero Veracruz Plaza Principal,Costa,Veracruz,2025-03-08
+S079,Tostadero Villahermosa Av. Hidalgo,Sur,Villahermosa,2023-07-13
+S080,Tostadero Ciudad Juárez Av. Reforma,Norte,Ciudad Juárez,2019-12-20
+S081,Tostadero Saltillo Los Pinos,Norte,Saltillo,2022-02-11
+S082,Tostadero Cancún Av. Independencia,Costa,Cancún,2026-03-17
+S083,Tostadero Ciudad de México Av. Universidad,Centro,Ciudad de México,2018-12-04
+S084,Tostadero Mazatlán Av. Reforma,Costa,Mazatlán,2019-09-06
+S085,Tostadero Acapulco Av. Juárez,Costa,Acapulco,2018-11-27
+S086,Tostadero La Paz Av. Independencia,Costa,La Paz,2022-01-06
+S087,Tostadero Mazatlán Av. Hidalgo,Costa,Mazatlán,2024-01-09
+S088,Tostadero Querétaro Plaza Principal,Centro,Querétaro,2023-07-10
+S089,Tostadero Hermosillo Av. Juárez,Norte,Hermosillo,2019-08-30
+S090,Tostadero Toluca Plaza Principal,Centro,Toluca,2021-05-12
+S091,Tostadero Hermosillo Av. Revolución,Norte,Hermosillo,2020-03-25
+S092,Tostadero Ciudad Juárez Av. Independencia,Norte,Ciudad Juárez,2022-02-22
+S093,Tostadero Torreón Av. Revolución,Norte,Torreón,2020-06-04
+S094,Tostadero Chihuahua Plaza Principal,Norte,Chihuahua,2020-05-16
+S095,Tostadero León Av. Morelos,Centro,León,2025-09-14
+S096,Tostadero Puerto Vallarta Plaza Principal,Costa,Puerto Vallarta,2021-10-13
+S097,Tostadero Toluca Av. Universidad,Centro,Toluca,2021-04-28
+S098,Tostadero Oaxaca Av. Revolución,Sur,Oaxaca,2020-07-06
+S099,Tostadero León Av. Revolución,Centro,León,2018-05-12
+S100,Tostadero Ciudad Juárez Av. Insurgentes,Norte,Ciudad Juárez,2023-07-20
+S101,Tostadero Campeche Jardín Principal,Sur,Campeche,2024-01-07
+S102,Tostadero San Cristóbal de las Casas Av. Independencia,Sur,San Cristóbal de las Casas,2025-10-25
+S103,Tostadero Chihuahua Av. Hidalgo,Norte,Chihuahua,2024-06-05
+S104,Tostadero Acapulco Av. Independencia,Costa,Acapulco,2025-08-08
+S105,Tostadero Ciudad Juárez Av. Morelos,Norte,Ciudad Juárez,2022-10-09
+S106,Tostadero La Paz Av. Universidad,Costa,La Paz,2023-01-19
+S107,Tostadero Torreón Los Pinos,Norte,Torreón,2022-11-03
+S108,Tostadero Mazatlán Av. Universidad,Costa,Mazatlán,2021-12-28
+S109,Tostadero Toluca Jardín Principal,Centro,Toluca,2025-03-19
+S110,Tostadero Puerto Vallarta Av. Hidalgo,Costa,Puerto Vallarta,2024-03-02
+S111,Tostadero Saltillo Av. Revolución,Norte,Saltillo,2018-12-11
+S112,Tostadero San Cristóbal de las Casas Jardín Principal,Sur,San Cristóbal de las Casas,2020-02-21
+S113,Tostadero Torreón Av. Insurgentes,Norte,Torreón,2023-11-15
+S114,Tostadero Monterrey Av. Reforma,Norte,Monterrey,2018-01-30
+S115,Tostadero Mérida Av. Universidad,Sur,Mérida,2025-07-21
+S116,Tostadero Monterrey Av. Universidad,Norte,Monterrey,2024-03-08
+S117,Tostadero León Av. Insurgentes,Centro,León,2025-01-22
+S118,Tostadero Ciudad de México Av. Reforma,Centro,Ciudad de México,2020-08-10
+S119,Tostadero Villahermosa Plaza Principal,Sur,Villahermosa,2023-01-07
+S120,Tostadero Tuxtla Gutiérrez Av. Reforma,Sur,Tuxtla Gutiérrez,2024-04-22

@@ -1,0 +1,21 @@
+# Entorno virtual, secretos y cachés
+.env
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Bases DuckDB generadas (se recrean desde data/raw o data/processed)
+*.duckdb
+*.duckdb.wal
+*.db
+
+# SO / editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,800 @@
+{
+  "periodo": {
+    "inicio": "2026-01-05",
+    "fin": "2026-03-29"
+  },
+  "archivos_sha256": {
+    "sucursales.csv": "9b8378a5af7429056cc83e5ba344f8d31faca4a3ae0bf4c8d377fe5613948a7d",
+    "ventas_diarias.csv": "53f97c2bdeef6962783b118c87fd0e0a74a65fb257df69d5f3bdb478f7e0879f",
+    "quejas.csv": "697cc3facf206d776f9fc79ae5119825173bc25560a5f9119936c1b69aca30a6",
+    "capacitaciones.csv": "91cad58faf2a1b171c1ef6f0078e17e5d420aae1b9deb4b1256c00a4a1f41505"
+  },
+  "tablas": {
+    "sucursales": {
+      "filas": 120,
+      "columnas": 5,
+      "nombres_columnas": [
+        "sucursal_id",
+        "nombre",
+        "region",
+        "ciudad",
+        "fecha_apertura"
+      ],
+      "tipos_inferidos": {
+        "sucursal_id": "VARCHAR",
+        "nombre": "VARCHAR",
+        "region": "VARCHAR",
+        "ciudad": "VARCHAR",
+        "fecha_apertura": "DATE"
+      },
+      "nulos_por_columna": {
+        "sucursal_id": 0,
+        "nombre": 0,
+        "region": 0,
+        "ciudad": 0,
+        "fecha_apertura": 0
+      }
+    },
+    "ventas_diarias": {
+      "filas": 9658,
+      "columnas": 3,
+      "nombres_columnas": [
+        "fecha",
+        "sucursal_id",
+        "pedidos"
+      ],
+      "tipos_inferidos": {
+        "fecha": "DATE",
+        "sucursal_id": "VARCHAR",
+        "pedidos": "BIGINT"
+      },
+      "nulos_por_columna": {
+        "fecha": 0,
+        "sucursal_id": 0,
+        "pedidos": 0
+      }
+    },
+    "quejas": {
+      "filas": 6845,
+      "columnas": 6,
+      "nombres_columnas": [
+        "queja_id",
+        "fecha",
+        "sucursal_id",
+        "categoria",
+        "canal",
+        "comentario"
+      ],
+      "tipos_inferidos": {
+        "queja_id": "VARCHAR",
+        "fecha": "DATE",
+        "sucursal_id": "VARCHAR",
+        "categoria": "VARCHAR",
+        "canal": "VARCHAR",
+        "comentario": "VARCHAR"
+      },
+      "nulos_por_columna": {
+        "queja_id": 0,
+        "fecha": 0,
+        "sucursal_id": 0,
+        "categoria": 0,
+        "canal": 0,
+        "comentario": 0
+      }
+    },
+    "capacitaciones": {
+      "filas": 36,
+      "columnas": 3,
+      "nombres_columnas": [
+        "sucursal_id",
+        "fecha_capacitacion",
+        "metodo_asignacion"
+      ],
+      "tipos_inferidos": {
+        "sucursal_id": "VARCHAR",
+        "fecha_capacitacion": "DATE",
+        "metodo_asignacion": "VARCHAR"
+      },
+      "nulos_por_columna": {
+        "sucursal_id": 0,
+        "fecha_capacitacion": 0,
+        "metodo_asignacion": 0
+      }
+    }
+  },
+  "conteo_hallazgos": {
+    "confirmado": 2,
+    "sospechoso": 4,
+    "informativo": 3
+  },
+  "validaciones_superadas": [
+    {
+      "id": "S-ESQ",
+      "tabla": "sucursales",
+      "titulo": "Columnas distintas al contrato",
+      "deteccion": "Comparación de cabeceras con las del enunciado."
+    },
+    {
+      "id": "S-NUL",
+      "tabla": "sucursales",
+      "titulo": "Valores nulos o vacíos",
+      "deteccion": "Conteo de NULL o cadena vacía/espacios por columna."
+    },
+    {
+      "id": "S-ESP",
+      "tabla": "sucursales",
+      "titulo": "Espacios al inicio/fin en valores",
+      "deteccion": "Comparación valor vs trim(valor)."
+    },
+    {
+      "id": "V-ESQ",
+      "tabla": "ventas_diarias",
+      "titulo": "Columnas distintas al contrato",
+      "deteccion": "Comparación de cabeceras con las del enunciado."
+    },
+    {
+      "id": "V-NUL",
+      "tabla": "ventas_diarias",
+      "titulo": "Valores nulos o vacíos",
+      "deteccion": "Conteo de NULL o cadena vacía/espacios por columna."
+    },
+    {
+      "id": "V-ESP",
+      "tabla": "ventas_diarias",
+      "titulo": "Espacios al inicio/fin en valores",
+      "deteccion": "Comparación valor vs trim(valor)."
+    },
+    {
+      "id": "Q-ESQ",
+      "tabla": "quejas",
+      "titulo": "Columnas distintas al contrato",
+      "deteccion": "Comparación de cabeceras con las del enunciado."
+    },
+    {
+      "id": "Q-NUL",
+      "tabla": "quejas",
+      "titulo": "Valores nulos o vacíos",
+      "deteccion": "Conteo de NULL o cadena vacía/espacios por columna."
+    },
+    {
+      "id": "Q-ESP",
+      "tabla": "quejas",
+      "titulo": "Espacios al inicio/fin en valores",
+      "deteccion": "Comparación valor vs trim(valor)."
+    },
+    {
+      "id": "C-ESQ",
+      "tabla": "capacitaciones",
+      "titulo": "Columnas distintas al contrato",
+      "deteccion": "Comparación de cabeceras con las del enunciado."
+    },
+    {
+      "id": "C-NUL",
+      "tabla": "capacitaciones",
+      "titulo": "Valores nulos o vacíos",
+      "deteccion": "Conteo de NULL o cadena vacía/espacios por columna."
+    },
+    {
+      "id": "C-ESP",
+      "tabla": "capacitaciones",
+      "titulo": "Espacios al inicio/fin en valores",
+      "deteccion": "Comparación valor vs trim(valor)."
+    },
+    {
+      "id": "S-VAR",
+      "tabla": "sucursales",
+      "titulo": "Variantes de formato en categorías",
+      "deteccion": "Valores distintos que coinciden tras minúsculas, trim y quitar acentos."
+    },
+    {
+      "id": "Q-VAR",
+      "tabla": "quejas",
+      "titulo": "Variantes de formato en categorías",
+      "deteccion": "Valores distintos que coinciden tras minúsculas, trim y quitar acentos."
+    },
+    {
+      "id": "C-VAR",
+      "tabla": "capacitaciones",
+      "titulo": "Variantes de formato en categorías",
+      "deteccion": "Valores distintos que coinciden tras minúsculas, trim y quitar acentos."
+    },
+    {
+      "id": "S-DUP",
+      "tabla": "sucursales",
+      "titulo": "sucursal_id duplicado",
+      "deteccion": "Clave de negocio sucursal_id con más de una fila."
+    },
+    {
+      "id": "S-ID",
+      "tabla": "sucursales",
+      "titulo": "sucursal_id fuera de S001–S120",
+      "deteccion": "Regex ^S\\d{3}$ y rango 1–120 del enunciado."
+    },
+    {
+      "id": "S-FALT",
+      "tabla": "sucursales",
+      "titulo": "Faltan sucursales del rango S001–S120",
+      "deteccion": "Comparación contra las 120 sucursales del enunciado."
+    },
+    {
+      "id": "S-REG",
+      "tabla": "sucursales",
+      "titulo": "Región fuera del dominio documentado",
+      "deteccion": "Dominio esperado: ['Norte', 'Sur', 'Centro', 'Costa']."
+    },
+    {
+      "id": "S-FECHA",
+      "tabla": "sucursales",
+      "titulo": "fecha_apertura inválida o con formato no ISO",
+      "deteccion": "Regex AAAA-MM-DD + conversión a DATE."
+    },
+    {
+      "id": "S-CIU",
+      "tabla": "sucursales",
+      "titulo": "Ciudad asignada a más de una región",
+      "deteccion": "Ciudades con más de una región distinta."
+    },
+    {
+      "id": "S-NOM",
+      "tabla": "sucursales",
+      "titulo": "Nombre de sucursal duplicado",
+      "deteccion": "Nombres repetidos en ids distintos."
+    },
+    {
+      "id": "S-APFIN",
+      "tabla": "sucursales",
+      "titulo": "fecha_apertura posterior al fin del periodo",
+      "deteccion": "fecha_apertura > 2026-03-29."
+    },
+    {
+      "id": "V-DUPX",
+      "tabla": "ventas_diarias",
+      "titulo": "Filas duplicadas exactas",
+      "deteccion": "Mismas 3 columnas repetidas."
+    },
+    {
+      "id": "V-DUPK",
+      "tabla": "ventas_diarias",
+      "titulo": "Misma (fecha, sucursal) con pedidos distintos",
+      "deteccion": "Clave de negocio (fecha, sucursal_id) repetida con valores en conflicto."
+    },
+    {
+      "id": "V-FMT",
+      "tabla": "ventas_diarias",
+      "titulo": "Fecha inválida o no ISO",
+      "deteccion": "Regex AAAA-MM-DD + conversión a DATE."
+    },
+    {
+      "id": "V-RANGO",
+      "tabla": "ventas_diarias",
+      "titulo": "Fecha fuera del periodo documentado",
+      "deteccion": "Comparación con el periodo del enunciado."
+    },
+    {
+      "id": "V-FK",
+      "tabla": "ventas_diarias",
+      "titulo": "sucursal_id sin correspondencia en sucursales",
+      "deteccion": "Anti-join contra sucursales."
+    },
+    {
+      "id": "V-INT",
+      "tabla": "ventas_diarias",
+      "titulo": "pedidos no es un entero",
+      "deteccion": "Regex ^-?\\d+$."
+    },
+    {
+      "id": "V-CERO",
+      "tabla": "ventas_diarias",
+      "titulo": "pedidos = 0",
+      "deteccion": "pedidos = 0 en un día de operación."
+    },
+    {
+      "id": "V-PREAP",
+      "tabla": "ventas_diarias",
+      "titulo": "Ventas anteriores a la apertura de la sucursal",
+      "deteccion": "fecha < fecha_apertura."
+    },
+    {
+      "id": "V-FALT",
+      "tabla": "ventas_diarias",
+      "titulo": "Días sin fila de ventas para una sucursal ya abierta",
+      "deteccion": "Anti-join de (sucursal × calendario desde apertura) contra ventas_diarias."
+    },
+    {
+      "id": "Q-DUPK",
+      "tabla": "quejas",
+      "titulo": "Mismo queja_id con contenido distinto",
+      "deteccion": "Clave queja_id repetida con otras columnas distintas."
+    },
+    {
+      "id": "Q-ID",
+      "tabla": "quejas",
+      "titulo": "queja_id fuera de formato Q#####",
+      "deteccion": "Regex ^Q\\d{5}$."
+    },
+    {
+      "id": "Q-CAT",
+      "tabla": "quejas",
+      "titulo": "categoria fuera del dominio documentado",
+      "deteccion": "Dominio: ['demora', 'pedido_incorrecto', 'trato', 'limpieza', 'calidad_producto']."
+    },
+    {
+      "id": "Q-CAN",
+      "tabla": "quejas",
+      "titulo": "canal fuera del dominio documentado",
+      "deteccion": "Dominio: ['app', 'telefono', 'redes', 'en_tienda']."
+    },
+    {
+      "id": "Q-FMT",
+      "tabla": "quejas",
+      "titulo": "Fecha inválida o no ISO",
+      "deteccion": "Regex + DATE."
+    },
+    {
+      "id": "Q-RANGO",
+      "tabla": "quejas",
+      "titulo": "Fecha fuera del periodo documentado",
+      "deteccion": "Comparación con el periodo del enunciado."
+    },
+    {
+      "id": "Q-FK",
+      "tabla": "quejas",
+      "titulo": "sucursal_id sin correspondencia en sucursales",
+      "deteccion": "Anti-join contra sucursales."
+    },
+    {
+      "id": "Q-PREAP",
+      "tabla": "quejas",
+      "titulo": "Quejas anteriores a la apertura de la sucursal",
+      "deteccion": "fecha de queja < fecha_apertura."
+    },
+    {
+      "id": "Q-COM",
+      "tabla": "quejas",
+      "titulo": "Comentario vacío o muy corto (< 10 caracteres)",
+      "deteccion": "Longitud del texto."
+    },
+    {
+      "id": "Q-COMCAT",
+      "tabla": "quejas",
+      "titulo": "Misma frase de comentario con categorías distintas",
+      "deteccion": "Primera oración del comentario agrupada; heurística de consistencia texto↔categoría."
+    },
+    {
+      "id": "C-DUP",
+      "tabla": "capacitaciones",
+      "titulo": "Sucursal capacitada más de una vez",
+      "deteccion": "Clave sucursal_id repetida (el enunciado dice una fila por sucursal)."
+    },
+    {
+      "id": "C-FK",
+      "tabla": "capacitaciones",
+      "titulo": "sucursal_id sin correspondencia en sucursales",
+      "deteccion": "Anti-join."
+    },
+    {
+      "id": "C-MET",
+      "tabla": "capacitaciones",
+      "titulo": "metodo_asignacion fuera del dominio documentado",
+      "deteccion": "Dominio: ['aleatorio', 'por_desempeno']."
+    },
+    {
+      "id": "C-FMT",
+      "tabla": "capacitaciones",
+      "titulo": "Fecha de capacitación inválida",
+      "deteccion": "Regex + DATE."
+    },
+    {
+      "id": "C-RANGO",
+      "tabla": "capacitaciones",
+      "titulo": "Capacitación fuera del periodo",
+      "deteccion": "Comparación con el periodo."
+    },
+    {
+      "id": "C-PREAP",
+      "tabla": "capacitaciones",
+      "titulo": "Capacitación anterior a la apertura de la sucursal",
+      "deteccion": "fecha_capacitacion < fecha_apertura."
+    },
+    {
+      "id": "X-SINVTA",
+      "tabla": "sucursales",
+      "titulo": "Sucursales sin ninguna fila de ventas",
+      "deteccion": "Anti-join sucursales → ventas."
+    }
+  ],
+  "hallazgos": [
+    {
+      "id": "Q-DUPX",
+      "severidad": "confirmado",
+      "titulo": "Filas duplicadas exactas (mismo queja_id y mismo contenido)",
+      "tabla": "quejas",
+      "registros_afectados": 199,
+      "deteccion": "Todas las columnas idénticas.",
+      "impacto": "Quejas contadas dos veces: infla conteos y tasas.",
+      "recomendacion": "Eliminar copias conservando una por queja_id.",
+      "evidencia": [],
+      "ejemplos": [
+        [
+          "139",
+          "Q00098",
+          "copia exacta de la fila 101"
+        ],
+        [
+          "590",
+          "Q00570",
+          "copia exacta de la fila 574"
+        ],
+        [
+          "793",
+          "Q00744",
+          "copia exacta de la fila 774"
+        ],
+        [
+          "863",
+          "Q00829",
+          "copia exacta de la fila 847"
+        ],
+        [
+          "1755",
+          "Q01705",
+          "copia exacta de la fila 1739"
+        ]
+      ]
+    },
+    {
+      "id": "V-NEG",
+      "severidad": "confirmado",
+      "titulo": "pedidos negativos",
+      "tabla": "ventas_diarias",
+      "registros_afectados": 3,
+      "deteccion": "pedidos < 0 es imposible (conteo de pedidos atendidos).",
+      "impacto": "Restan pedidos del denominador y alteran totales y tasas.",
+      "recomendacion": "Tratarlos como inválidos (nulos), no corregir con valor absoluto sin evidencia.",
+      "evidencia": [],
+      "ejemplos": [
+        [
+          "5096",
+          "2026-02-18 S085",
+          "pedidos=-5"
+        ],
+        [
+          "6172",
+          "2026-02-28 S016",
+          "pedidos=-44"
+        ],
+        [
+          "7745",
+          "2026-03-13 S112",
+          "pedidos=-14"
+        ]
+      ]
+    },
+    {
+      "id": "C-SESGO",
+      "severidad": "sospechoso",
+      "titulo": "Asignación de capacitación no homogénea (mezcla 'aleatorio' y 'por_desempeno')",
+      "tabla": "capacitaciones",
+      "registros_afectados": 21,
+      "deteccion": "Comparación de la tasa de quejas por 1.000 pedidos ANTES de la capacitación entre grupos (quejas únicas, pedidos sin inválidos).",
+      "impacto": "Si las sucursales 'por_desempeno' ya eran distintas antes, comparar capacitadas vs no capacitadas confunde el efecto de la capacitación con el sesgo de selección.",
+      "recomendacion": "Analizar por método (aleatorio vs resto) y mostrar tasas pre/post; no atribuir causalidad al total de capacitadas.",
+      "evidencia": [
+        "aleatorio: 15 sucursales, tasa pre=2.15, post=1.63 por 1.000 pedidos",
+        "por_desempeno: 21 sucursales, tasa pre=3.49, post=2.25 por 1.000 pedidos",
+        "sin_capacitar: 84 sucursales, tasa pre=1.91, post=1.93 por 1.000 pedidos",
+        "Diferencia pre por_desempeno vs aleatorio: +1.33"
+      ],
+      "ejemplos": []
+    },
+    {
+      "id": "Q-SINVTA",
+      "severidad": "sospechoso",
+      "titulo": "Quejas en un día sin pedidos válidos de esa sucursal",
+      "tabla": "quejas",
+      "registros_afectados": 2,
+      "deteccion": "Join queja ↔ ventas del mismo sucursal-día (solo días posteriores a la apertura).",
+      "impacto": "Numerador sin denominador: tasas por pedido infladas o indefinidas.",
+      "recomendacion": "Revisar junto con los pedidos inválidos.",
+      "evidencia": [],
+      "ejemplos": [
+        [
+          "3789",
+          "Q03672",
+          "sucursal-día 2026-02-18 S085: pedidos=-5"
+        ],
+        [
+          "4494",
+          "Q04364",
+          "sucursal-día 2026-02-28 S016: pedidos=-44"
+        ]
+      ]
+    },
+    {
+      "id": "V-EXT",
+      "severidad": "sospechoso",
+      "titulo": "Valores extremos de pedidos (atípicos por ambos criterios)",
+      "tabla": "ventas_diarias",
+      "registros_afectados": 8,
+      "deteccion": "Atípico para la sucursal por puntaje z modificado (|z| > 3.5) Y por la cerca far-out de Tukey (Q3 + 3·IQR de la propia sucursal), sobre pedidos > 0.",
+      "impacto": "Un solo valor extremo domina sumas y tasas por pedido de su región (efecto en la sección 6).",
+      "recomendacion": "Revisar uno a uno; si es un valor centinela o error evidente tratarlo como nulo (no recortar por percentil ni imputar sin criterio).",
+      "evidencia": [
+        "Valores repetidos (valor: cantidad): 99999: 5, 703: 1, 526: 1, 357: 1",
+        "S035 2026-03-20: 99999 (mediana sucursal 178)",
+        "S036 2026-01-10: 99999 (mediana sucursal 233)",
+        "S081 2026-03-16: 99999 (mediana sucursal 258)",
+        "S100 2026-03-27: 99999 (mediana sucursal 469)",
+        "S092 2026-02-09: 99999 (mediana sucursal 552)",
+        "S036 2026-03-28: 357 (mediana sucursal 233)",
+        "S058 2026-02-28: 526 (mediana sucursal 347)",
+        "S066 2026-01-24: 703 (mediana sucursal 482)"
+      ],
+      "ejemplos": [
+        [
+          "605",
+          "2026-01-10 S036",
+          "pedidos=99999 (mediana sucursal=233, z=4205.8)"
+        ],
+        [
+          "2229",
+          "2026-01-24 S066",
+          "pedidos=703 (mediana sucursal=482, z=4.1)"
+        ],
+        [
+          "4077",
+          "2026-02-09 S092",
+          "pedidos=99999 (mediana sucursal=552, z=1427.2)"
+        ],
+        [
+          "6212",
+          "2026-02-28 S058",
+          "pedidos=526 (mediana sucursal=347, z=4.7)"
+        ],
+        [
+          "8061",
+          "2026-03-16 S081",
+          "pedidos=99999 (mediana sucursal=258, z=3129.1)"
+        ]
+      ]
+    },
+    {
+      "id": "V-OUT",
+      "severidad": "sospechoso",
+      "titulo": "Valores atípicos moderados de pedidos (solo criterio MAD)",
+      "tabla": "ventas_diarias",
+      "registros_afectados": 36,
+      "deteccion": "Puntaje z modificado por sucursal con mediana y MAD (|0.6745·(x−mediana)/MAD| > 3.5, Iglewicz-Hoaglin) sin superar la cerca far-out de Tukey.",
+      "impacto": "Probablemente variación normal (picos por día de semana o eventos): excluirlos sesgaría los totales.",
+      "recomendacion": "No tratar sin evidencia adicional; conservar salvo que se confirme un error.",
+      "evidencia": [
+        "z máximo de este grupo: 4.7. La regla marca por construcción una fracción pequeña de datos legítimos cuando hay colas pesadas."
+      ],
+      "ejemplos": [
+        [
+          "608",
+          "2026-01-10 S040",
+          "pedidos=312 (mediana sucursal=228, z=3.8)"
+        ],
+        [
+          "620",
+          "2026-01-10 S052",
+          "pedidos=1280 (mediana sucursal=893, z=3.7)"
+        ],
+        [
+          "2081",
+          "2026-01-23 S029",
+          "pedidos=714 (mediana sucursal=490, z=4.0)"
+        ],
+        [
+          "2176",
+          "2026-01-24 S009",
+          "pedidos=323 (mediana sucursal=231, z=3.8)"
+        ],
+        [
+          "2203",
+          "2026-01-24 S039",
+          "pedidos=460 (mediana sucursal=339, z=3.5)"
+        ]
+      ]
+    },
+    {
+      "id": "R-PARC",
+      "severidad": "informativo",
+      "titulo": "Sucursales con menos de 84 días de datos de ventas",
+      "tabla": "ventas_diarias",
+      "registros_afectados": 6,
+      "deteccion": "Conteo de filas de ventas por sucursal frente a los 84 días del periodo.",
+      "impacto": "Comparar totales de quejas/pedidos sin normalizar penaliza o favorece a las sucursales nuevas; rankings por conteo absoluto son engañosos.",
+      "recomendacion": "Usar siempre tasas por pedidos (razón de sumas) y mostrar la ventana de operación.",
+      "evidencia": [
+        "S015: 14 días (apertura 2026-03-16)",
+        "S033: 14 días (apertura 2026-03-16)",
+        "S037: 14 días (apertura 2026-03-16)",
+        "S059: 14 días (apertura 2026-03-16)",
+        "S076: 13 días (apertura 2026-03-17)",
+        "S082: 13 días (apertura 2026-03-17)"
+      ],
+      "ejemplos": [
+        [
+          "—",
+          "S033",
+          "días con ventas=14"
+        ],
+        [
+          "—",
+          "S015",
+          "días con ventas=14"
+        ],
+        [
+          "—",
+          "S076",
+          "días con ventas=13"
+        ],
+        [
+          "—",
+          "S037",
+          "días con ventas=14"
+        ],
+        [
+          "—",
+          "S059",
+          "días con ventas=14"
+        ]
+      ]
+    },
+    {
+      "id": "S-APERT",
+      "severidad": "informativo",
+      "titulo": "Sucursales abiertas durante el periodo",
+      "tabla": "sucursales",
+      "registros_afectados": 6,
+      "deteccion": "fecha_apertura dentro del periodo.",
+      "impacto": "Tienen menos días de operación: totales y tasas no son comparables con sucursales de periodo completo.",
+      "recomendacion": "Mantenerlas, pero normalizar por días de operación o pedidos.",
+      "evidencia": [
+        "S015 (Centro) abrió el 2026-03-16",
+        "S033 (Norte) abrió el 2026-03-16",
+        "S037 (Sur) abrió el 2026-03-16",
+        "S059 (Centro) abrió el 2026-03-16",
+        "S076 (Norte) abrió el 2026-03-17",
+        "S082 (Costa) abrió el 2026-03-17"
+      ],
+      "ejemplos": [
+        [
+          "16",
+          "S015",
+          "apertura=2026-03-16"
+        ],
+        [
+          "34",
+          "S033",
+          "apertura=2026-03-16"
+        ],
+        [
+          "38",
+          "S037",
+          "apertura=2026-03-16"
+        ],
+        [
+          "60",
+          "S059",
+          "apertura=2026-03-16"
+        ],
+        [
+          "77",
+          "S076",
+          "apertura=2026-03-17"
+        ]
+      ]
+    },
+    {
+      "id": "X-SINQUE",
+      "severidad": "informativo",
+      "titulo": "Sucursales sin ninguna queja",
+      "tabla": "sucursales",
+      "registros_afectados": 1,
+      "deteccion": "Anti-join sucursales → quejas.",
+      "impacto": "Su tasa es 0: es un dato válido, pero hay que distinguirlo de 'sin dato'.",
+      "recomendacion": "Mantener.",
+      "evidencia": [],
+      "ejemplos": [
+        [
+          "83",
+          "S082",
+          "sin quejas"
+        ]
+      ]
+    }
+  ],
+  "tasas_sensibilidad": [
+    {
+      "region": "Centro",
+      "quejas_brutas": 2087,
+      "quejas_unicas": 2025,
+      "pedidos_brutos": 943258,
+      "pedidos_sin_invalidos": 942555,
+      "tasa_bruta_x1000": 2.213,
+      "tasa_ajustada_x1000": 2.148,
+      "promedio_simple_tasas_sucursal_x1000": 2.23
+    },
+    {
+      "region": "Costa",
+      "quejas_brutas": 1621,
+      "quejas_unicas": 1570,
+      "pedidos_brutos": 891509,
+      "pedidos_sin_invalidos": 690633,
+      "tasa_bruta_x1000": 1.818,
+      "tasa_ajustada_x1000": 2.273,
+      "promedio_simple_tasas_sucursal_x1000": 2.095
+    },
+    {
+      "region": "Norte",
+      "quejas_brutas": 1663,
+      "quejas_unicas": 1617,
+      "pedidos_brutos": 1133514,
+      "pedidos_sin_invalidos": 833561,
+      "tasa_bruta_x1000": 1.467,
+      "tasa_ajustada_x1000": 1.94,
+      "promedio_simple_tasas_sucursal_x1000": 2.184
+    },
+    {
+      "region": "Sur",
+      "quejas_brutas": 1474,
+      "quejas_unicas": 1434,
+      "pedidos_brutos": 778507,
+      "pedidos_sin_invalidos": 778521,
+      "tasa_bruta_x1000": 1.893,
+      "tasa_ajustada_x1000": 1.842,
+      "promedio_simple_tasas_sucursal_x1000": 1.853
+    },
+    {
+      "region": "TOTAL",
+      "quejas_brutas": 6845,
+      "quejas_unicas": 6646,
+      "pedidos_brutos": 3746788,
+      "pedidos_sin_invalidos": 3245270,
+      "tasa_bruta_x1000": 1.827,
+      "tasa_ajustada_x1000": 2.048,
+      "promedio_simple_tasas_sucursal_x1000": 2.09
+    }
+  ],
+  "capacitaciones": {
+    "resumen": {
+      "fechas": {
+        "2026-02-09": 36
+      },
+      "metodos": {
+        "aleatorio": 15,
+        "por_desempeno": 21
+      },
+      "regiones": {
+        "Centro": 7,
+        "Costa": 7,
+        "Norte": 15,
+        "Sur": 7
+      },
+      "sin_capacitar": 84
+    },
+    "grupos": [
+      [
+        "aleatorio",
+        15,
+        2.153397189993175,
+        1.627243256004148
+      ],
+      [
+        "por_desempeno",
+        21,
+        3.4873015725405225,
+        2.246160593837014
+      ],
+      [
+        "sin_capacitar",
+        84,
+        1.9101041094643745,
+        1.9341631810896254
+      ]
+    ]
+  }
+}

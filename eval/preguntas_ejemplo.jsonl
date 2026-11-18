@@ -1,0 +1,10 @@
+{"id": "P01", "pregunta": "¿Cuántas sucursales tiene la región Costa?", "respuesta_esperada": 30, "tipo": "numero", "tolerancia": 0}
+{"id": "P02", "pregunta": "¿Cuántas quejas recibió la región Sur en febrero de 2026?", "respuesta_esperada": 442, "tipo": "numero", "tolerancia": 0}
+{"id": "P03", "pregunta": "¿Cuál fue la tasa de quejas por cada 1,000 pedidos de la región Centro en todo el periodo?", "respuesta_esperada": 2.15, "tipo": "numero", "tolerancia": 0.01}
+{"id": "P04", "pregunta": "¿Qué categoría de queja es la más común en la región Norte?", "respuesta_esperada": "demora", "tipo": "texto", "tolerancia": null}
+{"id": "P05", "pregunta": "¿Cuántas sucursales recibieron capacitación y en qué fecha?", "respuesta_esperada": "36 sucursales, el 2026-02-09", "tipo": "texto", "tolerancia": null}
+{"id": "P06", "pregunta": "¿Cuáles son las 3 sucursales con más quejas por cada 1,000 pedidos en febrero de 2026?", "respuesta_esperada": ["S012", "S107", "S067"], "tipo": "lista", "tolerancia": 0}
+{"id": "P07", "pregunta": "¿Qué sucursal tuvo más pedidos en la semana del 2 de marzo de 2026?", "respuesta_esperada": "S052", "tipo": "texto", "tolerancia": null}
+{"id": "P08", "pregunta": "¿Por qué canal llegan más quejas?", "respuesta_esperada": "app", "tipo": "texto", "tolerancia": null}
+{"id": "P09", "pregunta": "¿Cuántas sucursales abrieron durante el periodo?", "respuesta_esperada": 6, "tipo": "numero", "tolerancia": 0}
+{"id": "P10", "pregunta": "Resume en dos frases de qué se quejan los clientes de la sucursal S104.", "respuesta_esperada": "Los clientes de la sucursal S104 se quejan sobre todo de la limpieza (82% de sus 60 quejas); los comentarios más frecuentes son «El baño estaba en mal estado» y «Había basura en el piso». El resto son quejas aisladas de calidad del producto, pedido incorrecto y trato.", "tipo": "texto", "tolerancia": null}
