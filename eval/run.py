@@ -140,6 +140,7 @@ def summarize(records: list[dict], mode: str, questions_path: Path) -> dict:
         "tools": {
             "total_calls": sum(int(r.get("tool_calls") or 0) for r in records),
             "total_errors": sum(int(r.get("tool_errors") or 0) for r in records),
+            "questions_without_tools": sum(1 for r in records if int(r.get("tool_calls") or 0) == 0),
         },
         "tokens_and_cost": {
             "input_tokens": sum(int(r["tokens_in"]) for r in records if r.get("tokens_in") is not None),
@@ -274,7 +275,7 @@ def run_evaluation(
                         "id": qid, "pregunta": q["pregunta"], "tipo": q["tipo"],
                         "esperado": q["respuesta_esperada"], "obtenido": "", "valor_extraido": None,
                         "estado": "not_evaluable", "motivo": "Sin respuesta offline para este ID.",
-                        "modelo_configurado": "offline", "modelo_usado": row["model"] if row else None,
+                        "modelo_configurado": "offline", "modelo_usado": None,
                         "models_used": [], "fallback_used": False, "latencia_s": 0.0,
                         "tokens_in": None, "tokens_out": None, "tokens_partial": True,
                         "costo_usd": None, "cost_status": "unknown_missing_tokens",

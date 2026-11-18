@@ -110,7 +110,7 @@ Validar un archivo JSON de recomendaciones:
 python -m eval.run --check-recommendations <recomendaciones.json>
 ```
 
-Los resultados se separan automáticamente en `eval/results/real/` y `eval/results/offline/` (`results.jsonl`, `summary.json`, `report.md`). Tarifas configurables en `eval/pricing.json` y criterios textuales en `eval/text_criteria.json`.
+Los resultados se separan automáticamente en `eval/results/real/` y `eval/results/offline/` (`report.md` legible, `summary.json` con métricas agregadas y `results.jsonl` por pregunta). Tarifas configurables en `eval/pricing.json` y criterios textuales en `eval/text_criteria.json`.
 
 ## Tests
 

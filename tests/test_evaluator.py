@@ -38,6 +38,7 @@ def db_con(tmp_path_factory):
     ("Total: 1,234.56 pedidos.", 1234.56),
     ("En marzo de 2026 hubo 493 quejas.", 493.0),
     ("53,3 pedidos por día operativo.", 53.3),
+    ("53.3 pedidos por día operativo (14 días operativos desde su apertura).", 53.3),
 ])
 def test_extraccion_numerica_formatos(texto, esperado):
     st, val = extract_number(texto)
@@ -84,6 +85,17 @@ def test_evaluacion_textual_p10_y_p16():
     assert evaluate_item(p16, "La tasa fue 3.49 y 2.15.", CRITERIA)["estado"] == "incorrect"
     buena_p16 = "Tenían 3,49 frente a 2,15 por sesgo de selección, por lo que no demuestra causalidad."
     assert evaluate_item(p16, buena_p16, CRITERIA)["estado"] == "correct"
+
+
+def test_negaciones_y_subcadenas_no_dan_falso_positivo():
+    p04 = {"id": "P04", "tipo": "texto", "respuesta_esperada": "demora", "tolerancia": None}
+    assert evaluate_item(p04, "La categoría más común no es demora, sino trato.", CRITERIA)["estado"] == "incorrect"
+    p05 = {"id": "P05", "tipo": "texto", "respuesta_esperada": "36 sucursales, el 2026-02-09", "tolerancia": None}
+    assert evaluate_item(p05, "Fueron 360 sucursales el 2026-02-09.", CRITERIA)["estado"] == "incorrect"
+    p10 = {"id": "P10", "tipo": "texto", "respuesta_esperada": "...", "tolerancia": None}
+    assert evaluate_item(p10, "En un barrio urbano (82%) no se quejan de limpieza ni de basura.", CRITERIA)["estado"] == "incorrect"
+    p16 = {"id": "P16", "tipo": "texto", "respuesta_esperada": "...", "tolerancia": None}
+    assert evaluate_item(p16, "Tasas 3.49 y 2.15; no hay sesgo y demuestra causalidad.", CRITERIA)["estado"] == "incorrect"
 
 
 def test_texto_extenso_sin_criterio_es_no_evaluable():
@@ -143,6 +155,7 @@ def test_runner_offline_reportes_y_costos_desconocidos(tmp_path):
     # P01 tiene costo estimado; P02 (tokens_partial) y P03 (provider_error) tienen costo desconocido
     assert summary["tokens_and_cost"]["cost_unknown_questions"] == 2
     assert summary["tokens_and_cost"]["known_cost_usd"] is not None
+    assert summary["tools"]["questions_without_tools"] == 1
     assert (out / "results.jsonl").exists() and (out / "summary.json").exists() and (out / "report.md").exists()
 
 
@@ -206,3 +219,13 @@ def test_preguntas_propias_formato_y_veracidad_sql(db_con):
         "SELECT sucursal_id FROM v_metricas_sucursal ORDER BY tasa_quejas_x1000 DESC NULLS LAST, quejas DESC, sucursal_id LIMIT 3").fetchall()]
     assert by_id["P18"]["respuesta_esperada"] == [r[0] for r in db_con.execute(
         "SELECT sucursal_id FROM v_metricas_sucursal WHERE datos_incompletos ORDER BY sucursal_id").fetchall()]
+    # Verificación adicional de P16 (tasas pre 3.49 vs 2.15) y P10 (S104: 60 quejas, ~82% limpieza)
+    pre = dict(db_con.execute(
+        "SELECT cp.metodo_asignacion, round(1000.0*sum(m.quejas)/sum(m.pedidos_validos), 2) "
+        "FROM v_metricas_dia m JOIN capacitaciones cp USING (sucursal_id) WHERE m.fecha < DATE '2026-02-09' GROUP BY 1"
+    ).fetchall())
+    assert pre == {"aleatorio": 2.15, "por_desempeno": 3.49}
+    s104_total, s104_limp = db_con.execute(
+        "SELECT count(*), count(*) FILTER (WHERE categoria='limpieza') FROM quejas WHERE sucursal_id='S104'"
+    ).fetchone()
+    assert s104_total == 60 and round(100 * s104_limp / s104_total) == 82

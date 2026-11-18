@@ -56,12 +56,14 @@ def extract_number(text: str) -> tuple[str, float | None]:
     """Extrae un único número claro. Devuelve ('ok'|'ambiguous'|'missing', valor)."""
     cleaned = _strip_unit_and_date_noise(text or "")
     first_sentence = re.split(r"\n|(?<=\d|\w)\.\s+(?=[A-ZÁÉÍÓÚÑ¿])", cleaned.strip(), maxsplit=1)[0]
-    first_nums = _numbers_in(first_sentence)
-    uniq_first = list(dict.fromkeys(first_nums))
-    if len(uniq_first) == 1:
-        return "ok", uniq_first[0]
-    if len(uniq_first) > 1:
-        return "ambiguous", None
+    # Primero intentar sin aclaraciones entre paréntesis (ej. "53.3 pedidos diarios (14 días operativos)")
+    sin_paren = re.sub(r"\([^)]*\)", " ", first_sentence)
+    for chunk in (sin_paren, first_sentence):
+        uniq_first = list(dict.fromkeys(_numbers_in(chunk)))
+        if len(uniq_first) == 1:
+            return "ok", uniq_first[0]
+        if len(uniq_first) > 1 and chunk is first_sentence:
+            return "ambiguous", None
     all_nums = _numbers_in(cleaned)
     uniq_all = list(dict.fromkeys(all_nums))
     if len(uniq_all) == 1:
@@ -95,6 +97,23 @@ def extract_list(text: str) -> tuple[str, list[str] | None]:
     if len(lines) >= 2:
         return "ok", lines
     return "missing", None
+
+
+def _matches_term(norm_ans: str, term: str) -> bool:
+    """Coincidencia por palabra/frase completa; rechaza negaciones inmediatas si el término es positivo."""
+    norm_term = normalize_text(term)
+    if not norm_term:
+        return False
+    pat = rf"(?<!\w){re.escape(norm_term)}(?!\w)"
+    starts_neg = norm_term.startswith(("no ", "sin ", "ni ", "impide "))
+    for m in re.finditer(pat, norm_ans):
+        if starts_neg:
+            return True
+        prefix = norm_ans[max(0, m.start() - 32):m.start()]
+        if re.search(r"(?:^|\b)(?:no|sin|ni|tampoco|nunca|jamas)\s+(?:es|son|fue|fueron|hubo|hay|existe|existen|se\s+quejan|por|de)?\s*$", prefix):
+            continue
+        return True
+    return False
 
 
 def evaluate_item(item: dict, answer_text: str, criteria_map: dict[str, dict] | None = None) -> dict:
@@ -146,9 +165,9 @@ def evaluate_item(item: dict, answer_text: str, criteria_map: dict[str, dict] | 
         if crit:
             missing_groups = []
             for idx, group in enumerate(crit.get("required_any", [])):
-                if not any(normalize_text(opt) in norm_ans for opt in group):
+                if not any(_matches_term(norm_ans, opt) for opt in group):
                     missing_groups.append(f"grupo_{idx + 1}({group[0]})")
-            forbidden = [f for f in crit.get("forbidden_any", []) if normalize_text(f) in norm_ans]
+            forbidden = [f for f in crit.get("forbidden_any", []) if _matches_term(norm_ans, f)]
             if not missing_groups and not forbidden:
                 return {"estado": "correct", "valor_extraido": answer_text.strip(), "motivo": ""}
             mot = []
@@ -159,7 +178,7 @@ def evaluate_item(item: dict, answer_text: str, criteria_map: dict[str, dict] | 
             return {"estado": "incorrect", "valor_extraido": answer_text.strip(), "motivo": "; ".join(mot)}
         norm_esp = normalize_text(str(esp))
         if len(norm_esp.split()) <= 3:
-            ok = bool(re.search(rf"(?<!\w){re.escape(norm_esp)}(?!\w)", norm_ans))
+            ok = _matches_term(norm_ans, norm_esp)
             return {"estado": "correct" if ok else "incorrect", "valor_extraido": answer_text.strip(),
                     "motivo": "" if ok else f"No contiene '{esp}'."}
         return {"estado": "not_evaluable", "valor_extraido": answer_text.strip(),

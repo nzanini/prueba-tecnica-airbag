@@ -34,11 +34,29 @@
     ]
   },
   "P16": {
-    "description": "Tasas previas por método de asignación (3.49 vs 2.15) y advertencia de sesgo de selección / no causalidad",
+    "description": "Tasas previas por método de asignación (3.49 vs 2.15), sesgo de selección y no causalidad",
     "required_any": [
       ["3.49", "3,49"],
       ["2.15", "2,15"],
-      ["sesgo", "causal", "causalidad", "no demuestra", "diferencia previa", "ya tenian"]
+      ["sesgo", "diferencia previa", "ya tenian"],
+      [
+        "no demuestra causalidad",
+        "no prueba causalidad",
+        "no implica causalidad",
+        "impide atribuir causalidad",
+        "no se puede concluir causalidad",
+        "no puede atribuirse causalidad",
+        "no permite afirmar causalidad",
+        "no es causal",
+        "no demuestra que la capacitacion",
+        "no prueba que la capacitacion"
+      ]
+    ],
+    "forbidden_any": [
+      "demuestra causalidad",
+      "prueba causalidad",
+      "no hay sesgo",
+      "sin sesgo"
     ]
   }
 }
