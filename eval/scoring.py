@@ -73,6 +73,28 @@ def extract_number(text: str) -> tuple[str, float | None]:
     return "missing", None
 
 
+def _extract_id_blocks(text: str) -> tuple[list[str], list[list[str]]]:
+    """Separa los IDs S### de la línea inicial y de bloques consecutivos de lista/ranking."""
+    lines = text.splitlines()
+    first_non_empty = next((ln.strip() for ln in lines if ln.strip()), "")
+    first_ids = re.findall(r"\bS\d{3}\b", first_non_empty.upper()) if not re.match(r"^\s*(?:\d+[.)]|[-*•])\s+", first_non_empty) else []
+
+    blocks: list[list[str]] = []
+    cur: list[str] = []
+    for ln in lines:
+        if re.match(r"^\s*(?:\d+[.)]|[-*•])\s+", ln):
+            found = re.findall(r"\bS\d{3}\b", ln.upper())
+            if found:
+                cur.append(found[0])
+                continue
+        if cur:
+            blocks.append(cur)
+            cur = []
+    if cur:
+        blocks.append(cur)
+    return first_ids, [b for b in blocks if len(b) >= 2]
+
+
 def extract_list(text: str) -> tuple[str, list[str] | None]:
     """Extrae una lista ordenada de elementos (IDs S### o ítems separados). Preserva duplicados."""
     t = (text or "").strip()
@@ -85,9 +107,21 @@ def extract_list(text: str) -> tuple[str, list[str] | None]:
                 return "ok", [str(x).strip() for x in arr]
         except json.JSONDecodeError:
             pass
+
+    first_ids, blocks = _extract_id_blocks(t)
+    if len(first_ids) >= 2:
+        # Si además hay un bloque de ranking/lista que contradice a la primera línea, es ambiguo.
+        if any(b != first_ids for b in blocks):
+            return "ambiguous", None
+        return "ok", first_ids
+    if blocks:
+        if any(b != blocks[0] for b in blocks[1:]):
+            return "ambiguous", None
+        return "ok", blocks[0]
     ids = re.findall(r"\bS\d{3}\b", t.upper())
     if ids:
         return "ok", ids
+
     first_line = t.splitlines()[0].strip().rstrip(".")
     if "," in first_line:
         parts = [p.strip() for p in first_line.split(",") if p.strip()]
@@ -99,21 +133,45 @@ def extract_list(text: str) -> tuple[str, list[str] | None]:
     return "missing", None
 
 
-def _matches_term(norm_ans: str, term: str) -> bool:
-    """Coincidencia por palabra/frase completa; rechaza negaciones inmediatas si el término es positivo."""
-    norm_term = normalize_text(term)
+def _is_negated(norm_ans: str, start: int) -> bool:
+    prefix = norm_ans[max(0, start - 36):start]
+    return bool(re.search(r"(?:^|\b)(?:no|sin|ni|tampoco|nunca|jamas)(?:\s+\w+){0,3}\s*$", prefix))
+
+
+def _matches_option(norm_ans: str, opt: Any) -> bool:
+    """Coincidencia por término completo o regla estructurada (percent_approx / ratio), evitando negaciones."""
+    if isinstance(opt, dict):
+        if "percent_approx" in opt:
+            target = float(opt["percent_approx"])
+            tol = float(opt.get("tolerance", 1.0))
+            for m in re.finditer(r"(\d+(?:[.,]\d+)?)\s*%", norm_ans):
+                if _is_negated(norm_ans, m.start()):
+                    continue
+                val = _parse_number_token(m.group(1))
+                if val is not None and abs(val - target) <= tol + 1e-9:
+                    return True
+            return False
+        if "ratio" in opt and len(opt["ratio"]) == 2:
+            num, den = int(opt["ratio"][0]), int(opt["ratio"][1])
+            for m in re.finditer(rf"\b{num}\s*(?:de|/)\s*{den}\b", norm_ans):
+                if not _is_negated(norm_ans, m.start()):
+                    return True
+            return False
+        return False
+
+    norm_term = normalize_text(str(opt))
     if not norm_term:
         return False
     pat = rf"(?<!\w){re.escape(norm_term)}(?!\w)"
     starts_neg = norm_term.startswith(("no ", "sin ", "ni ", "impide "))
     for m in re.finditer(pat, norm_ans):
-        if starts_neg:
+        if starts_neg or not _is_negated(norm_ans, m.start()):
             return True
-        prefix = norm_ans[max(0, m.start() - 32):m.start()]
-        if re.search(r"(?:^|\b)(?:no|sin|ni|tampoco|nunca|jamas)\s+(?:es|son|fue|fueron|hubo|hay|existe|existen|se\s+quejan|por|de)?\s*$", prefix):
-            continue
-        return True
     return False
+
+
+def _matches_term(norm_ans: str, term: str) -> bool:
+    return _matches_option(norm_ans, term)
 
 
 def evaluate_item(item: dict, answer_text: str, criteria_map: dict[str, dict] | None = None) -> dict:
@@ -137,6 +195,9 @@ def evaluate_item(item: dict, answer_text: str, criteria_map: dict[str, dict] | 
 
     if tipo == "lista":
         st, vals = extract_list(answer_text)
+        if st == "ambiguous":
+            return {"estado": "not_evaluable", "valor_extraido": None,
+                    "motivo": "La respuesta contiene múltiples listas contradictorias."}
         if st == "missing" or vals is None:
             return {"estado": "extraction_error", "valor_extraido": None,
                     "motivo": "No se pudo extraer una lista de elementos."}
@@ -165,8 +226,9 @@ def evaluate_item(item: dict, answer_text: str, criteria_map: dict[str, dict] | 
         if crit:
             missing_groups = []
             for idx, group in enumerate(crit.get("required_any", [])):
-                if not any(_matches_term(norm_ans, opt) for opt in group):
-                    missing_groups.append(f"grupo_{idx + 1}({group[0]})")
+                if not any(_matches_option(norm_ans, opt) for opt in group):
+                    label = group[0] if isinstance(group[0], str) else json.dumps(group[0])
+                    missing_groups.append(f"grupo_{idx + 1}({label})")
             forbidden = [f for f in crit.get("forbidden_any", []) if _matches_term(norm_ans, f)]
             if not missing_groups and not forbidden:
                 return {"estado": "correct", "valor_extraido": answer_text.strip(), "motivo": ""}

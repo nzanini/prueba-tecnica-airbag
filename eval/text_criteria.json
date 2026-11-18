@@ -25,11 +25,14 @@
     ]
   },
   "P10": {
-    "description": "Resumen en dos frases de quejas de S104: limpieza predominante (~82% de 60) y principales motivos (baño, basura)",
+    "description": "Resumen en dos frases de quejas de S104: limpieza predominante (~82% / 49 de 60) y principales motivos (baño/baños, basura)",
     "required_any": [
       ["limpieza"],
-      ["82%", "82 %", "mayoria", "predomina", "principal", "sobre todo"],
-      ["bano"],
+      [
+        {"percent_approx": 82, "tolerance": 1.0},
+        {"ratio": [49, 60]}
+      ],
+      ["bano", "banos"],
       ["basura"]
     ]
   },

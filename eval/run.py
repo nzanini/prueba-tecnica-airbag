@@ -358,6 +358,35 @@ def run_evaluation(
     return summary
 
 
+def rescore_results(
+    questions_path: Path,
+    results_path: Path,
+    out_dir: Path | None = None,
+    criteria_path: Path | None = DEFAULT_CRITERIA,
+) -> dict:
+    """Reevalúa respuestas ya guardadas en ``results.jsonl`` sin llamar a ningún LLM ni pisar el original."""
+    questions = {q["id"]: q for q in load_jsonl(questions_path)}
+    stored = load_jsonl(results_path)
+    criteria = load_json(criteria_path)
+    out_dir = out_dir or results_path.parent.with_name(results_path.parent.name + "_rescored")
+
+    new_records: list[dict] = []
+    for rec in stored:
+        rec = dict(rec)
+        q = questions.get(rec["id"])
+        if q and rec.get("estado") != "provider_error":
+            ev = evaluate_item(q, rec.get("obtenido", ""), criteria)
+            rec["estado"] = ev["estado"]
+            rec["valor_extraido"] = ev["valor_extraido"]
+            rec["motivo"] = ev["motivo"]
+        new_records.append(rec)
+
+    summary = summarize(new_records, "real", questions_path)
+    summary["rescored_from"] = str(results_path.as_posix())
+    _write_outputs(out_dir, new_records, summary)
+    return summary
+
+
 def main(argv: list[str] | None = None) -> int:
     for s in (sys.stdout, sys.stderr):
         if hasattr(s, "reconfigure"):
@@ -375,7 +404,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--criteria", type=Path, default=DEFAULT_CRITERIA)
     ap.add_argument("--pricing", type=Path, default=DEFAULT_PRICING)
     ap.add_argument("--check-recommendations", type=Path, help="Archivo JSON de recomendaciones a validar.")
+    ap.add_argument("--rescore", type=Path, help="Reevalúa un results.jsonl existente sin llamar al LLM.")
     args = ap.parse_args(argv)
+
+    if args.rescore:
+        summary = rescore_results(args.questions, args.rescore, args.out_dir, args.criteria)
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return 0
 
     if args.check_recommendations:
         con = get_connection()

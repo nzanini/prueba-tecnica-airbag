@@ -109,10 +109,11 @@ Ejecución offline (para validar el evaluador con respuestas guardadas o simulad
 python -m eval.run --questions eval/preguntas_ejemplo.jsonl --offline-answers <respuestas.jsonl>
 ```
 
-Validar un archivo JSON de recomendaciones:
+Validar un archivo JSON de recomendaciones o reevaluar respuestas ya guardadas sin llamar al LLM:
 
 ```bash
 python -m eval.run --check-recommendations <recomendaciones.json>
+python -m eval.run --questions eval/preguntas_ejemplo.jsonl --rescore eval/results/real_ejemplo/results.jsonl
 ```
 
 Los resultados se separan automáticamente en `eval/results/real/` y `eval/results/offline/` (`report.md` legible, `summary.json` con métricas agregadas y `results.jsonl` por pregunta). Tarifas configurables en `eval/pricing.json` y criterios textuales en `eval/text_criteria.json`.

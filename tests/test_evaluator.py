@@ -72,6 +72,21 @@ def test_comparacion_listas_ordenadas():
     ext = evaluate_item(item, "S012, S107")
     assert ext["estado"] == "incorrect" and "faltantes" in ext["motivo"]
 
+    # Respuesta real de P06: lista explícita + ranking numerado explicativo con los mismos IDs
+    real_p06 = (
+        "S012, S107, S067\n\n"
+        "Las tasas en febrero de 2026 fueron:\n"
+        "1. S012: 4.60 quejas por cada 1.000 pedidos (15 quejas en 3262 pedidos).\n"
+        "2. S107: 4.34 quejas por cada 1.000 pedidos (41 quejas en 9443 pedidos).\n"
+        "3. S067: 3.92 quejas por cada 1.000 pedidos (15 quejas en 3830 pedidos)."
+    )
+    res_p06 = evaluate_item(item, real_p06)
+    assert res_p06["estado"] == "correct" and res_p06["valor_extraido"] == ["S012", "S107", "S067"]
+
+    # Dos listas contradictorias -> not_evaluable (no elegir arbitrariamente una)
+    contradictoria = "S012, S107, S067\n\n1. S107: 4.34\n2. S012: 4.60\n3. S067: 3.92"
+    assert evaluate_item(item, contradictoria)["estado"] == "not_evaluable"
+
 
 # ---------------------------------------------------------------------- texto
 def test_evaluacion_textual_p10_y_p16():
@@ -80,6 +95,20 @@ def test_evaluacion_textual_p10_y_p16():
     buena_p10 = ("Los clientes de S104 se quejan principalmente de limpieza (82% de las 60 quejas). "
                  "Mencionan el baño en mal estado y basura en el piso.")
     assert evaluate_item(p10, buena_p10, CRITERIA)["estado"] == "correct"
+
+    # Respuesta real de P10 (81.67%, 49 de 60, baños en plural, basura)
+    real_p10 = (
+        "El 81.67% de las quejas (49 de 60) corresponde a problemas de limpieza, concentrándose "
+        "principalmente en baños en mal estado, basura en el piso, malos olores, vasos manchados "
+        "y mesas sucias."
+    )
+    assert evaluate_item(p10, real_p10, CRITERIA)["estado"] == "correct"
+    # Equivalente con 49 de 60 sin porcentaje
+    assert evaluate_item(p10, "49 de 60 quejas son de limpieza por baños y basura.", CRITERIA)["estado"] == "correct"
+    # Negativos: porcentaje incorrecto, negación explícita, falta concepto relevante
+    assert evaluate_item(p10, "El 50% de las quejas son de limpieza por baños y basura.", CRITERIA)["estado"] == "incorrect"
+    assert evaluate_item(p10, "El 81.67% no hay problemas de limpieza, baños ni basura.", CRITERIA)["estado"] == "incorrect"
+    assert evaluate_item(p10, "El 81.67% de las quejas son de limpieza y baños en mal estado.", CRITERIA)["estado"] == "incorrect"
 
     p16 = {"id": "P16", "tipo": "texto", "respuesta_esperada": "...", "tolerancia": None}
     assert evaluate_item(p16, "La tasa fue 3.49 y 2.15.", CRITERIA)["estado"] == "incorrect"
@@ -94,6 +123,7 @@ def test_negaciones_y_subcadenas_no_dan_falso_positivo():
     assert evaluate_item(p05, "Fueron 360 sucursales el 2026-02-09.", CRITERIA)["estado"] == "incorrect"
     p10 = {"id": "P10", "tipo": "texto", "respuesta_esperada": "...", "tolerancia": None}
     assert evaluate_item(p10, "En un barrio urbano (82%) no se quejan de limpieza ni de basura.", CRITERIA)["estado"] == "incorrect"
+    assert evaluate_item(p10, "El 82% dice que no hay problemas de limpieza, baños ni basura.", CRITERIA)["estado"] == "incorrect"
     p16 = {"id": "P16", "tipo": "texto", "respuesta_esperada": "...", "tolerancia": None}
     assert evaluate_item(p16, "Tasas 3.49 y 2.15; no hay sesgo y demuestra causalidad.", CRITERIA)["estado"] == "incorrect"
 
@@ -229,3 +259,21 @@ def test_preguntas_propias_formato_y_veracidad_sql(db_con):
         "SELECT count(*), count(*) FILTER (WHERE categoria='limpieza') FROM quejas WHERE sucursal_id='S104'"
     ).fetchone()
     assert s104_total == 60 and round(100 * s104_limp / s104_total) == 82
+
+
+def test_rescore_preserva_original_y_recalcula(tmp_path):
+    orig_dir = tmp_path / "real_ejemplo"
+    orig_dir.mkdir()
+    r1 = {"id": "P06", "pregunta": "q", "tipo": "lista", "esperado": ["S012", "S107", "S067"],
+          "obtenido": "S012, S107, S067\n1. S012\n2. S107\n3. S067",
+          "valor_extraido": ["S012", "S107", "S067", "S012", "S107", "S067"],
+          "estado": "incorrect", "motivo": "duplicados", "modelo_usado": "m",
+          "latencia_s": 5.0, "tokens_in": 100, "tokens_out": 20, "llm_calls": 1, "tool_calls": 1}
+    orig_file = orig_dir / "results.jsonl"
+    orig_bytes = (json.dumps(r1, ensure_ascii=False) + "\n").encode("utf-8")
+    orig_file.write_bytes(orig_bytes)
+    out_dir = tmp_path / "rescored"
+    summary = eval_run.rescore_results(EJEMPLO, orig_file, out_dir=out_dir)
+    assert orig_file.read_bytes() == orig_bytes  # original intacto
+    assert summary["counts"]["correct"] == 1 and summary["accuracy_evaluated"] == 1.0
+    assert summary["latency"]["total_s"] == 5.0 and summary["tokens_and_cost"]["input_tokens"] == 100

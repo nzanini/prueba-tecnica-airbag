@@ -72,6 +72,8 @@ Las reglas no incluyen respuestas de `eval/preguntas_ejemplo.jsonl`; esas respue
 | E3 | Separación entre `accuracy_evaluated` (sobre preguntas evaluables) y `success_rate_total` (sobre el total) | Distingue la precisión analítica del agente cuando responde frente a fallos del proveedor o respuestas no evaluables. |
 | E4 | Costos configurables en `eval/pricing.json`; si la tarifa no está verificada o hubo intentos fallidos (`tokens_partial`), el costo se marca desconocido (`null`) | Evita inventar tarifas o asumir que una llamada fallida fue gratuita. |
 | E5 | Reportes reales (`eval/results/real/`) separados de los offline (`eval/results/offline/`) y guardado incremental con `--resume` | Nunca mezcla resultados simulados con métricas reales y permite reanudar evaluaciones interrumpidas por cuota sin repetir preguntas completadas. |
+| E6 | Extracción de listas por bloques (`extract_list`) y equivalencia porcentual/proporcional (`percent_approx`, `ratio`) con control de negaciones | Evita falsos negativos cuando una respuesta incluye la lista y luego un ranking explicativo idéntico (P06) o porcentajes sin redondear (`81.67%` ≈ `82%` / `49 de 60`) y plurales (`baños`, P10); marca `not_evaluable` si hay listas contradictorias. |
+| E7 | Opción `--rescore` en `eval/run.py` | Permite recalcular el scoring sobre respuestas ya guardadas en `results.jsonl` preservando intacto el reporte original y sin consumir cuota. |
 
 ## Integración con OpenRouter (Fase 3C)
 
