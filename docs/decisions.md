@@ -51,3 +51,14 @@ Las reglas no incluyen respuestas de `eval/preguntas_ejemplo.jsonl`; esas respue
 | G4 | Herramientas dedicadas (`get_schema`, `run_sql`, `get_complaint_comments`, `get_branch_summary`, `submit_recommendations`) | Reduce errores de SQL en tareas frecuentes (resumen de sucursal y comentarios), trata los comentarios explícitamente como datos y fuerza la validación de recomendaciones. |
 | G5 | Validación programática de recomendaciones JSON (llaves exactas, `sucursal_id` existente, sin duplicados y verificación de respaldo contra el corpus consultado) | Evita que el modelo invente sucursales, rompa el contrato JSON o agregue texto/Markdown fuera del array. |
 | G6 | Salida limpia en `stdout` y diagnóstico/observabilidad en `stderr` (`--verbose`) o JSONL (`--log-file`) | Permite capturar el JSON de recomendaciones directamente desde `stdout` y reutilizar las métricas (latencia, tokens, llamadas) en el evaluador de la fase 3. |
+
+## Decisiones de estabilización y fallback (Fase 2B)
+
+| # | Decisión | Razón |
+|---|---|---|
+| G7 | Desactivar reintentos internos del SDK (`HttpRetryOptions(attempts=1)`) y fijar timeout HTTP por intento (`12 s`) y presupuesto por pregunta (`60 s`) | Evita la doble capa de reintentos (SDK + código propio) que provocaba esperas de > 2 minutos ante `503`/`504`. |
+| G8 | Fallback configurable (`GEMINI_MODEL` + `GEMINI_FALLBACK_MODELS`, excluyendo `gemini-3.7-flash`) preservando `history` | Si un modelo falla tras ejecutar herramientas, el siguiente modelo recibe el historial completo con los resultados ya obtenidos sin repetir consultas SQL. |
+| G9 | Clasificación explícita de errores (`auth_error`, `bad_request`, `not_found`, `quota_exhausted`, `rate_limit_rpm`, `server_error`, `timeout`) | Evita reintentar errores no recuperables (`401`/`403`, `400`, `404`, cuota diaria agotada), respeta `Retry-After` en `429` RPM y pasa rápido a fallback en `504`. |
+| G10 | Registro por intento (`model`, `ok`, `latency_s`, `error_code`, `error_category`, `fallback_from`); tokens `None` en intentos fallidos | Hace trazables los fallbacks y distingue tokens desconocidos de cero real para el cálculo de costos de la fase 3. |
+| G11 | Detección heurística de idioma fuera de `es` antes de llamar al LLM + instrucción en prompt | Rechaza consultas claramente en otro idioma sin gastar cuota ni latencia en una llamada LLM adicional. |
+| G12 | Comando `python -m app.check_models` con solicitud mínima y `FunctionDeclaration` de prueba | Diagnostica disponibilidad, latencia y soporte de function calling únicamente de los modelos configurados. |

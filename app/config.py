@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_FALLBACK_MODELS = ("gemini-3.6-flash", "gemini-3.5-flash-lite")
+EXCLUDED_MODELS = frozenset({"gemini-3.7-flash"})
 
 
 class ConfigError(RuntimeError):
@@ -19,18 +21,50 @@ class ConfigError(RuntimeError):
 class Config:
     api_key: str
     model: str = DEFAULT_MODEL
+    fallback_models: tuple[str, ...] = DEFAULT_FALLBACK_MODELS
     max_llm_calls: int = 10  # iteraciones máximas del ciclo LLM
     max_tool_calls: int = 12  # llamadas máximas a herramientas por pregunta
     max_rows: int = 100  # filas máximas devueltas al modelo por consulta
-    query_timeout_s: float = 15.0
+    query_timeout_s: float = 15.0  # timeout por consulta SQL
+    request_timeout_s: float = 12.0  # timeout HTTP por intento al proveedor
+    question_budget_s: float = 60.0  # presupuesto total por pregunta
+    max_retries_per_model: int = 1  # reintentos acotados por modelo ante errores recuperables
+    retry_base_delay_s: float = 1.0
     temperature: float | None = 0.0
 
+    def model_chain(self) -> tuple[str, ...]:
+        """Orden de modelos a intentar: principal seguido de fallbacks únicos válidos."""
+        vistos = {self.model}
+        out = [self.model]
+        for m in self.fallback_models:
+            if m and m not in vistos and m not in EXCLUDED_MODELS:
+                vistos.add(m)
+                out.append(m)
+        return tuple(out)
+
     def __repr__(self) -> str:  # nunca mostrar la clave
-        return (f"Config(model={self.model!r}, api_key={'<set>' if self.api_key else '<missing>'}, "
-                f"max_llm_calls={self.max_llm_calls}, max_tool_calls={self.max_tool_calls}, max_rows={self.max_rows})")
+        return (f"Config(model={self.model!r}, fallback_models={self.fallback_models!r}, "
+                f"api_key={'<set>' if self.api_key else '<missing>'}, "
+                f"max_llm_calls={self.max_llm_calls}, max_tool_calls={self.max_tool_calls}, "
+                f"request_timeout_s={self.request_timeout_s}, question_budget_s={self.question_budget_s})")
 
 
-def load_config(model: str | None = None, env_file: Path | None = None, require_key: bool = True) -> Config:
+def _parse_fallbacks(raw: str | None, primary: str) -> tuple[str, ...]:
+    if raw is None:
+        items = list(DEFAULT_FALLBACK_MODELS)
+    else:
+        items = [x.strip() for x in raw.split(",") if x.strip()]
+    vistos = {primary}
+    out = []
+    for m in items:
+        if m not in vistos and m not in EXCLUDED_MODELS:
+            vistos.add(m)
+            out.append(m)
+    return tuple(out)
+
+
+def load_config(model: str | None = None, fallback_models: str | list[str] | tuple[str, ...] | None = None,
+                env_file: Path | None = None, require_key: bool = True) -> Config:
     """Carga la configuración. ``.env`` se lee sin pisar variables ya definidas en el entorno."""
     load_dotenv(env_file or ROOT / ".env", override=False)
     key = (os.environ.get("GEMINI_API_KEY") or "").strip()
@@ -39,5 +73,23 @@ def load_config(model: str | None = None, env_file: Path | None = None, require_
             "Falta GEMINI_API_KEY. Copiá .env.example a .env y completá GEMINI_API_KEY "
             "(o definí la variable de entorno). No se realizó ninguna llamada a la API.")
     chosen = (model or os.environ.get("GEMINI_MODEL") or DEFAULT_MODEL).strip()
+    if isinstance(fallback_models, (list, tuple)):
+        fb_raw = ",".join(fallback_models)
+    elif fallback_models is not None:
+        fb_raw = fallback_models
+    else:
+        fb_raw = os.environ.get("GEMINI_FALLBACK_MODELS")
+    fallbacks = _parse_fallbacks(fb_raw, chosen)
     temp = os.environ.get("GEMINI_TEMPERATURE")
-    return Config(api_key=key, model=chosen, temperature=float(temp) if temp else 0.0)
+    req_t = os.environ.get("GEMINI_REQUEST_TIMEOUT_S")
+    q_budget = os.environ.get("GEMINI_QUESTION_BUDGET_S")
+    retries = os.environ.get("GEMINI_MAX_RETRIES")
+    return Config(
+        api_key=key,
+        model=chosen,
+        fallback_models=fallbacks,
+        request_timeout_s=float(req_t) if req_t else 12.0,
+        question_budget_s=float(q_budget) if q_budget else 60.0,
+        max_retries_per_model=max(0, int(retries)) if retries is not None else 1,
+        temperature=float(temp) if temp else 0.0,
+    )

@@ -2,7 +2,7 @@
 
 Prueba técnica de ML/AI Engineer (Airbag): agente LLM en español para que un gerente de *Café Tostadero* (120 sucursales, 4 regiones) consulte datos de ventas, quejas y capacitaciones en DuckDB mediante herramientas SQL.
 
-**Estado: Fase 2 (agente LLM funcional con Gemini y DuckDB).** Todavía no está implementado el evaluador automático completo de la fase 3.
+**Estado: Fase 2B (integración Gemini estabilizada con fallback y validación real).** Todavía no está implementado el evaluador automático de la fase 3.
 
 ## Estructura
 
@@ -11,9 +11,9 @@ data/raw/        CSV originales (solo lectura)
 data/processed/  CSV limpios + base DuckDB (cafe_tostadero.duckdb no se versiona)
 data/quality/    Reportes de auditoría, limpieza y trazabilidad
 app/             audit_data.py, prepare_data.py, db.py, config.py, sql_guard.py,
-                 tools.py, llm.py, prompts.py, agent.py
+                 tools.py, llm.py, prompts.py, agent.py, check_models.py
 eval/            preguntas_ejemplo.jsonl
-tests/           Pruebas con pytest (auditoría, pipeline y agente)
+tests/           Pruebas con pytest (auditoría, pipeline, agente y resiliencia)
 docs/            decisions.md, metrics.md y reference/ (PDF del enunciado)
 AGENTS.md        Reglas de trabajo
 ```
@@ -27,14 +27,15 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Configurar Gemini API copiando `.env.example` a `.env` (no se versiona):
+Copiar `.env.example` a `.env` (no se versiona) y completar la clave:
 
 ```dotenv
 GEMINI_API_KEY=tu_clave_de_gemini
 GEMINI_MODEL=gemini-3.8-flash
+GEMINI_FALLBACK_MODELS=gemini-3.6-flash,gemini-3.5-flash-lite
 ```
 
-También podés definir `GEMINI_API_KEY` y `GEMINI_MODEL` directamente como variables de entorno.
+`GEMINI_MODEL` define el modelo principal y `GEMINI_FALLBACK_MODELS` la lista ordenada de respaldo (`gemini-3.7-flash` está excluido). También podés pasarlos por variables de entorno o con `--model` / `--fallback-models`.
 
 ## Preparación de datos y DuckDB
 
@@ -43,25 +44,24 @@ python -m app.audit_data     # 1) diagnóstico de calidad (solo lectura)
 python -m app.prepare_data   # 2) limpieza + construcción de cafe_tostadero.duckdb
 ```
 
-Para reconstruir DuckDB desde cero, ejecutá `python -m app.prepare_data`. Detalle de reglas y métricas en [`docs/decisions.md`](docs/decisions.md) y [`docs/metrics.md`](docs/metrics.md).
+## Diagnóstico de modelos
+
+Antes de correr el agente, podés verificar conectividad, latencia y compatibilidad de function calling únicamente sobre los modelos configurados:
+
+```bash
+python -m app.check_models
+```
 
 ## Ejecutar el agente
 
-Pregunta individual:
-
 ```bash
 python -m app.agent --question "¿Cuántas sucursales tiene la región Costa?"
+python -m app.agent   # modo interactivo
 ```
 
-Modo interactivo:
+Opciones: `--model`, `--fallback-models`, `--verbose` (`-v`, imprime trazabilidad de intentos, fallbacks, latencia y tokens en `stderr` sin afectar `stdout`) y `--log-file <ruta.jsonl>`.
 
-```bash
-python -m app.agent
-```
-
-Opciones útiles: `--model <modelo>` para cambiar el modelo sin editar `.env`, `--verbose` (`-v`) para ver trazas y métricas (tokens, latencia, herramientas) en `stderr` sin ensuciar `stdout`, y `--log-file <ruta.jsonl>` para guardar el registro de ejecuciones.
-
-Ejemplos de preguntas:
+Ejemplos:
 
 ```bash
 python -m app.agent -q "¿Cuál fue la tasa de quejas por cada 1,000 pedidos de la región Centro en todo el periodo?"
@@ -69,7 +69,20 @@ python -m app.agent -q "Resume en dos frases de qué se quejan los clientes de l
 python -m app.agent -q "¿Qué sucursales debería visitar esta semana?"
 ```
 
-En recomendaciones de sucursales a visitar, el agente devuelve únicamente un array JSON con las llaves `sucursal_id`, `motivo`, `evidencia` y `accion_sugerida`.
+En recomendaciones de sucursales a visitar, el agente devuelve únicamente un array JSON con `sucursal_id`, `motivo`, `evidencia` y `accion_sugerida`. Si recibe una consulta claramente en otro idioma, responde en español indicando que solo acepta consultas en español.
+
+## Manejo de errores, límites y nivel gratuito
+
+- Se desactivan los reintentos internos del SDK (`HttpRetryOptions(attempts=1)`) para evitar múltiples capas de espera.
+- Timeout por intento: `12 s` (`GEMINI_REQUEST_TIMEOUT_S`); presupuesto total por pregunta: `60 s` (`GEMINI_QUESTION_BUDGET_S`); máximo `1` reintento por modelo (`GEMINI_MAX_RETRIES`).
+- Clasificación de errores:
+  - `401`/`403` o `400`: fallan de inmediato sin reintentos ni fallback ciego.
+  - `404` o `429` por cuota diaria agotada: saltan directo al siguiente fallback.
+  - `429` temporal (RPM/TPM): respeta `Retry-After` si existe y reintenta de forma acotada.
+  - `500`/`503`: reintento acotado con backoff exponencial + jitter, luego fallback.
+  - `504` / timeout de red: salta al siguiente fallback disponible para no agotar el presupuesto.
+- **Nivel gratuito:** los modelos preview o con alta demanda (`gemini-3.8-flash`, `gemini-3.6-flash`) pueden devolver `503`/`504` o tener cuotas RPM/diarias ajustadas.
+- **Si todos los modelos fallan:** el agente devuelve un error explícito en `stderr`/`stdout` con el detalle de cada intento, sin inventar cifras ni respuestas. Verificá `python -m app.check_models`, ajustá `GEMINI_MODEL` / `GEMINI_FALLBACK_MODELS` o reintentá más tarde si el error es `429`/`503`.
 
 ## Tests
 
@@ -77,11 +90,4 @@ En recomendaciones de sucursales a visitar, el agente devuelve únicamente un ar
 python -m pytest -q
 ```
 
-Los tests del agente corren offline con un backend simulado (no consumen cuota de Gemini).
-
-## Limitaciones conocidas
-
-- Cuando faltan pedidos válidos (8 días anulados), la tasa del período usa todas las quejas sobre los pedidos válidos disponibles; las vistas marcan `datos_incompletos`.
-- Las sucursales abiertas durante el período (6) tienen 13–14 días operativos: no son comparables por volumen acumulado.
-- Las capacitaciones `por_desempeno` presentan sesgo de selección; las comparaciones antes/después no demuestran causalidad.
-- El evaluador automático completo sobre `eval/preguntas_ejemplo.jsonl` y preguntas adicionales queda para la fase 3.
+Todos los tests corren offline con backends simulados (no consumen cuota de Gemini).
