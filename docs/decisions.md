@@ -62,3 +62,13 @@ Las reglas no incluyen respuestas de `eval/preguntas_ejemplo.jsonl`; esas respue
 | G10 | Registro por intento (`model`, `ok`, `latency_s`, `error_code`, `error_category`, `fallback_from`); tokens `None` en intentos fallidos | Hace trazables los fallbacks y distingue tokens desconocidos de cero real para el cálculo de costos de la fase 3. |
 | G11 | Detección heurística de idioma fuera de `es` antes de llamar al LLM + instrucción en prompt | Rechaza consultas claramente en otro idioma sin gastar cuota ni latencia en una llamada LLM adicional. |
 | G12 | Comando `python -m app.check_models` con solicitud mínima y `FunctionDeclaration` de prueba | Diagnostica disponibilidad, latencia y soporte de function calling únicamente de los modelos configurados. |
+
+## Decisiones del evaluador (Fase 3A)
+
+| # | Decisión | Razón |
+|---|---|---|
+| E1 | Extracción numérica con filtrado de fechas ISO, referencias de escala (`por cada 1,000`) y detección de ambigüedad | Soporta formatos decimales españoles/ingleses; si una respuesta tiene varios números candidatos ambiguos se marca `not_evaluable` en vez de elegir arbitrariamente. |
+| E2 | Evaluación textual determinista mediante `eval/text_criteria.json` (sin LLM como juez) | No consume cuota extra y es reproducible. **Alcance:** garantiza presencia de cifras/conceptos obligatorios normalizados, pero no evalúa fluidez ni matices estilísticos; textos extensos sin criterio configurado se marcan `not_evaluable`. |
+| E3 | Separación entre `accuracy_evaluated` (sobre preguntas evaluables) y `success_rate_total` (sobre el total) | Distingue la precisión analítica del agente cuando responde frente a fallos del proveedor o respuestas no evaluables. |
+| E4 | Costos configurables en `eval/pricing.json`; si la tarifa no está verificada o hubo intentos fallidos (`tokens_partial`), el costo se marca desconocido (`null`) | Evita inventar tarifas o asumir que una llamada fallida fue gratuita. |
+| E5 | Reportes reales (`eval/results/real/`) separados de los offline (`eval/results/offline/`) y guardado incremental con `--resume` | Nunca mezcla resultados simulados con métricas reales y permite reanudar evaluaciones interrumpidas por cuota sin repetir preguntas completadas. |

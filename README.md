@@ -2,7 +2,7 @@
 
 Prueba técnica de ML/AI Engineer (Airbag): agente LLM en español para que un gerente de *Café Tostadero* (120 sucursales, 4 regiones) consulte datos de ventas, quejas y capacitaciones en DuckDB mediante herramientas SQL.
 
-**Estado: Fase 2B (integración Gemini estabilizada con fallback y validación real).** Todavía no está implementado el evaluador automático de la fase 3.
+**Estado: Fase 3A (evaluador automático y preguntas desafiantes listos; sin corrida masiva contra Gemini).** Todavía no se ejecutó la evaluación completa de la fase 3B.
 
 ## Estructura
 
@@ -12,9 +12,10 @@ data/processed/  CSV limpios + base DuckDB (cafe_tostadero.duckdb no se versiona
 data/quality/    Reportes de auditoría, limpieza y trazabilidad
 app/             audit_data.py, prepare_data.py, db.py, config.py, sql_guard.py,
                  tools.py, llm.py, prompts.py, agent.py, check_models.py
-eval/            preguntas_ejemplo.jsonl
-tests/           Pruebas con pytest (auditoría, pipeline, agente y resiliencia)
-docs/            decisions.md, metrics.md y reference/ (PDF del enunciado)
+eval/            preguntas_ejemplo.jsonl, preguntas_propias.jsonl, text_criteria.json,
+                 pricing.json, scoring.py, run.py, results/
+tests/           Pruebas con pytest (auditoría, pipeline, agente, resiliencia y evaluador)
+docs/            decisions.md, metrics.md, eval_cases.md y reference/ (PDF)
 AGENTS.md        Reglas de trabajo
 ```
 
@@ -83,6 +84,33 @@ En recomendaciones de sucursales a visitar, el agente devuelve únicamente un ar
   - `504` / timeout de red: salta al siguiente fallback disponible para no agotar el presupuesto.
 - **Nivel gratuito:** los modelos preview o con alta demanda (`gemini-3.8-flash`, `gemini-3.6-flash`) pueden devolver `503`/`504` o tener cuotas RPM/diarias ajustadas.
 - **Si todos los modelos fallan:** el agente devuelve un error explícito en `stderr`/`stdout` con el detalle de cada intento, sin inventar cifras ni respuestas. Verificá `python -m app.check_models`, ajustá `GEMINI_MODEL` / `GEMINI_FALLBACK_MODELS` o reintentá más tarde si el error es `429`/`503`.
+
+## Evaluación (Fase 3A)
+
+Conjuntos de evaluación:
+- `eval/preguntas_ejemplo.jsonl` (10 preguntas originales, sin modificar).
+- `eval/preguntas_propias.jsonl` (8 preguntas desafiantes P11–P18; justificación y SQL en [`docs/eval_cases.md`](docs/eval_cases.md)).
+
+Ejecución real (consume cuota de Gemini; soporta subconjuntos y reanudación):
+
+```bash
+python -m eval.run --questions eval/preguntas_ejemplo.jsonl --ids P01,P03
+python -m eval.run --questions eval/preguntas_propias.jsonl --limit 3 --resume
+```
+
+Ejecución offline (para validar el evaluador con respuestas guardadas o simuladas, sin consumir cuota):
+
+```bash
+python -m eval.run --questions eval/preguntas_ejemplo.jsonl --offline-answers <respuestas.jsonl>
+```
+
+Validar un archivo JSON de recomendaciones:
+
+```bash
+python -m eval.run --check-recommendations <recomendaciones.json>
+```
+
+Los resultados se separan automáticamente en `eval/results/real/` y `eval/results/offline/` (`results.jsonl`, `summary.json`, `report.md`). Tarifas configurables en `eval/pricing.json` y criterios textuales en `eval/text_criteria.json`.
 
 ## Tests
 

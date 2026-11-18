@@ -1,0 +1,44 @@
+{
+  "P04": {
+    "description": "Categoría de queja más común en la región Norte",
+    "required_any": [
+      ["demora"]
+    ]
+  },
+  "P05": {
+    "description": "Cantidad de sucursales capacitadas y fecha",
+    "required_any": [
+      ["36"],
+      ["2026-02-09", "9 de febrero de 2026", "9 de febrero"]
+    ]
+  },
+  "P07": {
+    "description": "Sucursal con más pedidos en la semana del 2 de marzo de 2026",
+    "required_any": [
+      ["s052"]
+    ]
+  },
+  "P08": {
+    "description": "Canal por el que llegan más quejas",
+    "required_any": [
+      ["app"]
+    ]
+  },
+  "P10": {
+    "description": "Resumen en dos frases de quejas de S104: limpieza predominante (~82% de 60) y principales motivos (baño, basura)",
+    "required_any": [
+      ["limpieza"],
+      ["82%", "82 %", "mayoria", "predomina", "principal", "sobre todo"],
+      ["bano"],
+      ["basura"]
+    ]
+  },
+  "P16": {
+    "description": "Tasas previas por método de asignación (3.49 vs 2.15) y advertencia de sesgo de selección / no causalidad",
+    "required_any": [
+      ["3.49", "3,49"],
+      ["2.15", "2,15"],
+      ["sesgo", "causal", "causalidad", "no demuestra", "diferencia previa", "ya tenian"]
+    ]
+  }
+}
