@@ -1,23 +1,24 @@
 # prueba-tecnica-airbag
 
-Prueba técnica de ML/AI Engineer (Airbag): un agente LLM que permite a un gerente de la cadena ficticia *Café Tostadero* (120 sucursales, 4 regiones) consultar sus datos en español. Las cifras deben salir de consultas SQL (DuckDB), no del prompt.
+Prueba técnica de ML/AI Engineer (Airbag): agente LLM en español para que un gerente de *Café Tostadero* (120 sucursales, 4 regiones) consulte datos de ventas, quejas y capacitaciones en DuckDB mediante herramientas SQL.
 
-**Estado: Fase 1B (datos limpios y base DuckDB lista).** Todavía no hay agente LLM ni evaluador.
+**Estado: Fase 2 (agente LLM funcional con Gemini y DuckDB).** Todavía no está implementado el evaluador automático completo de la fase 3.
 
 ## Estructura
 
 ```text
 data/raw/        CSV originales (solo lectura)
-data/processed/  CSV limpios + base DuckDB (la base no se versiona)
-data/quality/    Reportes de auditoría y de limpieza
-app/             audit_data.py, prepare_data.py, db.py
+data/processed/  CSV limpios + base DuckDB (cafe_tostadero.duckdb no se versiona)
+data/quality/    Reportes de auditoría, limpieza y trazabilidad
+app/             audit_data.py, prepare_data.py, db.py, config.py, sql_guard.py,
+                 tools.py, llm.py, prompts.py, agent.py
 eval/            preguntas_ejemplo.jsonl
-tests/           Pruebas con pytest
+tests/           Pruebas con pytest (auditoría, pipeline y agente)
 docs/            decisions.md, metrics.md y reference/ (PDF del enunciado)
 AGENTS.md        Reglas de trabajo
 ```
 
-## Instalación (Python 3.11+)
+## Instalación y configuración (Python 3.11+)
 
 ```bash
 python -m venv .venv
@@ -26,32 +27,61 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Para fases futuras: copiar `.env.example` a `.env` y completar `GEMINI_API_KEY` y `GEMINI_MODEL` (no se versiona).
+Configurar Gemini API copiando `.env.example` a `.env` (no se versiona):
 
-## Uso
+```dotenv
+GEMINI_API_KEY=tu_clave_de_gemini
+GEMINI_MODEL=gemini-3.8-flash
+```
+
+También podés definir `GEMINI_API_KEY` y `GEMINI_MODEL` directamente como variables de entorno.
+
+## Preparación de datos y DuckDB
 
 ```bash
 python -m app.audit_data     # 1) diagnóstico de calidad (solo lectura)
-python -m app.prepare_data   # 2) limpieza + construcción de DuckDB
-python -m pytest -q          # 3) tests
+python -m app.prepare_data   # 2) limpieza + construcción de cafe_tostadero.duckdb
 ```
 
-| Proceso | Genera |
-|---|---|
-| `audit_data` | `data/quality/quality_report.md`, `quality_summary.json`, `quality_issues.csv` |
-| `prepare_data` | `data/processed/{sucursales,ventas_diarias,ventas_diarias_calidad,quejas,capacitaciones}.csv`, `data/processed/cafe_tostadero.duckdb`, `data/quality/transformations_log.csv`, `data/quality/preparation_summary.json` |
+Para reconstruir DuckDB desde cero, ejecutá `python -m app.prepare_data`. Detalle de reglas y métricas en [`docs/decisions.md`](docs/decisions.md) y [`docs/metrics.md`](docs/metrics.md).
 
-Ambos son idempotentes y nunca modifican `data/raw/`.
+## Ejecutar el agente
 
-**Reconstruir DuckDB:** borrar `data/processed/cafe_tostadero.duckdb` (opcional) y ejecutar `python -m app.prepare_data`. En código: `from app.db import get_connection`.
+Pregunta individual:
 
-## Reglas de limpieza (resumen)
+```bash
+python -m app.agent --question "¿Cuántas sucursales tiene la región Costa?"
+```
 
-199 quejas duplicadas eliminadas (quedan 6.646); 8 valores de pedidos (3 negativos y 5 de 99.999) pasan a NULL conservando la fila; el resto de atípicos se conserva. Detalle y consecuencias en [`docs/decisions.md`](docs/decisions.md); definiciones de métricas y esquema en [`docs/metrics.md`](docs/metrics.md).
+Modo interactivo:
 
-## Aún no implementado
+```bash
+python -m app.agent
+```
 
-- Agente LLM con Gemini y herramientas SQL
-- Recomendaciones en JSON
-- Script de evaluación y preguntas propias adicionales
-- Estimación de costo y latencia
+Opciones útiles: `--model <modelo>` para cambiar el modelo sin editar `.env`, `--verbose` (`-v`) para ver trazas y métricas (tokens, latencia, herramientas) en `stderr` sin ensuciar `stdout`, y `--log-file <ruta.jsonl>` para guardar el registro de ejecuciones.
+
+Ejemplos de preguntas:
+
+```bash
+python -m app.agent -q "¿Cuál fue la tasa de quejas por cada 1,000 pedidos de la región Centro en todo el periodo?"
+python -m app.agent -q "Resume en dos frases de qué se quejan los clientes de la sucursal S104."
+python -m app.agent -q "¿Qué sucursales debería visitar esta semana?"
+```
+
+En recomendaciones de sucursales a visitar, el agente devuelve únicamente un array JSON con las llaves `sucursal_id`, `motivo`, `evidencia` y `accion_sugerida`.
+
+## Tests
+
+```bash
+python -m pytest -q
+```
+
+Los tests del agente corren offline con un backend simulado (no consumen cuota de Gemini).
+
+## Limitaciones conocidas
+
+- Cuando faltan pedidos válidos (8 días anulados), la tasa del período usa todas las quejas sobre los pedidos válidos disponibles; las vistas marcan `datos_incompletos`.
+- Las sucursales abiertas durante el período (6) tienen 13–14 días operativos: no son comparables por volumen acumulado.
+- Las capacitaciones `por_desempeno` presentan sesgo de selección; las comparaciones antes/después no demuestran causalidad.
+- El evaluador automático completo sobre `eval/preguntas_ejemplo.jsonl` y preguntas adicionales queda para la fase 3.

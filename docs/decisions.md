@@ -40,3 +40,14 @@ Las reglas no incluyen respuestas de `eval/preguntas_ejemplo.jsonl`; esas respue
 - Cuando faltan pedidos válidos de un día, la tasa de ese período se calcula con todas las quejas y solo los pedidos válidos; puede estar levemente sobrestimada. Las vistas marcan estos períodos (`datos_incompletos`, `dias_con_pedidos_invalidos`) para advertir en las respuestas.
 - No se conoce el valor real de los 8 pedidos anulados.
 - `pedidos = 0`, días faltantes y quejas previas a la apertura: sin casos en este dataset; el pipeline no los trata específicamente.
+
+## Decisiones de arquitectura del agente (Fase 2)
+
+| # | Decisión | Razón |
+|---|---|---|
+| G1 | SDK oficial `google-genai` con `AutomaticFunctionCallingConfig(disable=True)` y modelo por defecto `gemini-3.8-flash` configurable vía `GEMINI_MODEL` | Control explícito del ciclo de herramientas, límite de llamadas, captura de tokens (`usage_metadata`), reintentos y errores sin depender de LangChain. |
+| G2 | Separación entre proveedor (`app/llm.py`), guardia SQL (`app/sql_guard.py`), herramientas (`app/tools.py`) y orquestador (`app/agent.py`) | Facilita testear offline con mocks y cambiar de modelo o proveedor sin tocar las herramientas ni las reglas de negocio. |
+| G3 | Seguridad SQL en dos capas: validación estructural del AST con `sqlglot` + conexión DuckDB de solo lectura (`enable_external_access=false`, `lock_configuration=true`), límite de 100 filas y timeout de 15 s | No basta verificar que la consulta empiece con `SELECT`; se bloquean mutaciones, múltiples sentencias, acceso a archivos/entorno, tablas no autorizadas y funciones peligrosas. |
+| G4 | Herramientas dedicadas (`get_schema`, `run_sql`, `get_complaint_comments`, `get_branch_summary`, `submit_recommendations`) | Reduce errores de SQL en tareas frecuentes (resumen de sucursal y comentarios), trata los comentarios explícitamente como datos y fuerza la validación de recomendaciones. |
+| G5 | Validación programática de recomendaciones JSON (llaves exactas, `sucursal_id` existente, sin duplicados y verificación de respaldo contra el corpus consultado) | Evita que el modelo invente sucursales, rompa el contrato JSON o agregue texto/Markdown fuera del array. |
+| G6 | Salida limpia en `stdout` y diagnóstico/observabilidad en `stderr` (`--verbose`) o JSONL (`--log-file`) | Permite capturar el JSON de recomendaciones directamente desde `stdout` y reutilizar las métricas (latencia, tokens, llamadas) en el evaluador de la fase 3. |
