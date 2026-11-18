@@ -1,33 +1,42 @@
 # Registro de decisiones técnicas
 
-## Decisiones de arquitectura (tomadas)
+## Decisiones de arquitectura
 
 | # | Decisión | Razón |
 |---|---|---|
-| A1 | Python 3.11+ con DuckDB y pytest como únicas dependencias | Mínimo necesario; DuckDB lee CSV directo y permite SQL, que es lo que usará el agente. |
-| A2 | Sin LangChain, Docker ni servicios cloud | El enunciado prioriza un agente simple y confiable; menos piezas, más reproducibilidad. |
-| A3 | Auditoría como módulo ejecutable `python -m app.audit_data` | Cualquier evaluador reproduce el reporte desde cero con un comando. |
-| A4 | CSV leídos como texto (`all_varchar`) y convertidos con reglas estrictas (`try_cast`, regex ISO) | La inferencia automática ocultaría valores inválidos; así quedan detectables. |
-| A5 | Base DuckDB en memoria, sin archivos `.duckdb` | La auditoría no deja estado ni toca los originales; los `.duckdb` están en `.gitignore`. |
-| A6 | Los errores se detectan programáticamente; solo los contratos del enunciado (periodo, 120 sucursales, dominios de regiones/categorías/canales/métodos) están codificados | Evita asumir errores de antemano. Los tests inyectan defectos sintéticos para comprobar la detección. |
-| A7 | Atípicos: puntaje z modificado por sucursal (mediana y MAD, corte 3.5, Iglewicz & Hoaglin) y cerca *far-out* de Tukey (Q3 + 3·IQR). «Extremo» = ambos; «moderado» = solo MAD | Criterios publicados y robustos. Se clasifican como *sospechosos*, no como errores. |
-| A8 | Reportes sin marcas de tiempo y con SHA-256 de los originales | Salida determinista, fácil de comparar; permite verificar que los originales no cambian. |
-| A9 | Rutas relativas a la raíz del repositorio (`Path(__file__)`) | Funciona en cualquier computadora. |
-| A10 | `data/processed/` y `data/quality/` se versionan | Pedido explícito del proyecto. |
+| A1 | Python 3.11+ con DuckDB y pytest como únicas dependencias | Mínimo necesario; DuckDB lee CSV directo y permite SQL, que usará el agente. |
+| A2 | Sin LangChain, Docker ni servicios cloud | El enunciado prioriza un agente simple y confiable. |
+| A3 | Auditoría (`python -m app.audit_data`) y limpieza (`python -m app.prepare_data`) como módulos separados | La auditoría solo diagnostica; la limpieza aplica únicamente reglas aprobadas. |
+| A4 | CSV leídos como texto (`all_varchar`) y convertidos con reglas estrictas | La inferencia automática ocultaría valores inválidos. |
+| A5 | Los errores se detectan por código; solo el contrato del enunciado está fijo | Evita asumir errores de antemano. |
+| A6 | Atípicos: z modificado por sucursal (mediana/MAD, corte 3,5; Iglewicz & Hoaglin) y cerca *far-out* de Tukey | Criterios publicados y robustos; clasifican como *sospechosos*, no como errores. |
+| A7 | Salidas deterministas (sin marcas de tiempo, `\n` fijo, orden explícito) y SHA-256 de originales y procesados | Idempotencia verificable por hash. |
+| A8 | Rutas relativas a la raíz (`Path(__file__)`) | Funciona en cualquier computadora. |
+| A9 | `data/processed/` y `data/quality/` se versionan; `*.duckdb` no | La base se reconstruye con `python -m app.prepare_data`. |
+| A10 | Conexión y construcción de la base centralizadas en `app/db.py`; las métricas se definen en vistas `v_*` | Una sola definición reutilizable por el agente (ver `docs/metrics.md`). |
+| A11 | La base se construye en un archivo temporal que reemplaza al anterior | Reconstrucción desde cero, sin acumulación ni bases a medio escribir. |
+| A12 | Los indicadores de calidad van en `ventas_diarias_calidad.csv`, separados de `ventas_diarias.csv` | Las columnas de negocio quedan limpias; el valor original y el motivo siguen disponibles. |
 
-## Decisiones de limpieza (PENDIENTES DE APROBACIÓN)
+## Reglas de limpieza aprobadas (Fase 1B, implementadas)
 
-Ninguna está aplicada. Cifras tomadas de `data/quality/quality_report.md`.
+Cantidades del dataset actual (fuente: `data/quality/preparation_summary.json`).
 
-| # | Hallazgo | Registros | Propuesta | Alternativa |
+| # | Regla | Registros | Justificación | Consecuencia analítica |
 |---|---|---|---|---|
-| L1 | `Q-DUPX`: quejas duplicadas exactas (mismo `queja_id` y contenido) | 199 | Conservar una fila por `queja_id`. | Conservar todo (infla conteos y tasas). |
-| L2 | `V-NEG`: pedidos negativos | 3 | Tratar como inválidos (nulos) y excluir de sumas. | Valor absoluto (sin evidencia de que sea un error de signo). |
-| L3 | `V-EXT`: pedidos extremos (5 valen 99999) | 8 | Revisar caso a caso; los 99999 parecen centinela → nulos. Los otros 3 (357, 526, 703) son moderados respecto de su sucursal y habría que conservarlos. | Excluir los 8 o conservarlos. |
-| L4 | `V-OUT`: atípicos moderados (solo MAD) | 36 | Conservar: probable variación legítima. | Excluir (sesga totales). |
-| L5 | `Q-SINVTA`: quejas en un sucursal-día cuyos pedidos son inválidos | 2 | Mantener la queja; excluir el día del denominador. | Excluir también la queja. |
-| L6 | `S-APERT` / `R-PARC`: sucursales abiertas durante el periodo (ventana parcial de 13–14 días) | 6 | Conservarlas; usar siempre tasas por pedidos. | Excluirlas de comparaciones de periodo completo. |
-| L7 | `C-SESGO`: capacitación asignada por métodos distintos; las `por_desempeno` ya tenían tasa previa mayor | 36 sucursales | No inferir causalidad del total de capacitadas; segmentar por método. | — |
-| L8 | Pedidos = 0 y días sin ventas | 0 detectados | Sin acción. | — |
+| L1 | Quejas: eliminar duplicados exactos, conservando la primera instancia. Si un `queja_id` aparece con contenido distinto, se reporta (`conservada sin resolver`) y no se elige | 199 eliminadas → 6.646 quejas únicas; 0 conflictos | Una queja no debe contarse dos veces | Conteos y tasas de quejas usan quejas únicas |
+| L2 | Ventas: `pedidos` negativo → NULL (la fila se conserva; no se reemplaza por 0 ni por valor absoluto) | 3 | Valor imposible; no hay evidencia del valor real | Esos días no suman ni entran al denominador |
+| L3 | Ventas: `pedidos` > 10 × mediana de la propia sucursal → NULL (en este dataset son los 5 valores de 99.999) | 5 | Incompatible con la escala de la sucursal. **Es una decisión de calidad de datos, no una corrección del valor real**: el valor original queda en `ventas_diarias_calidad.csv` y en `data/raw/` | Idem L2. El factor 10 es un parámetro (`EXTREMO_FACTOR`), no un valor fijo |
+| L4 | Otros atípicos (357, 526, 703 y los otros 36 moderados): se conservan sin cambios y se marcan `atipico_moderado` en la tabla de calidad | 39 | Parecen variación legítima; no se generaliza la eliminación estadística | Siguen en sumas y denominadores |
+| L5 | Quejas de días con pedidos inválidos: se conservan | 7 quejas en 8 días inválidos | La invalidez de la venta no implica que la queja sea falsa | Limitación: el numerador incluye esas quejas y el denominador no incluye esos pedidos. Las vistas ofrecen también `quejas_en_dias_con_pedidos_validos` y marcan `datos_incompletos` |
+| L6 | Sucursales nuevas: se respeta `fecha_apertura`; los días previos no son días sin ventas. `v_dias_operativos` define el calendario por sucursal | 6 sucursales con 13–14 días | Evitar comparar volúmenes acumulados entre sucursales con distinta ventana | Usar tasas o `pedidos_por_dia_operativo`; el total acumulado no es comparable |
+| L7 | Capacitaciones: se conservan todos los registros, con `metodo_asignacion` y `fecha_capacitacion` | 36 | Es la única información disponible | Las sucursales `por_desempeno` ya tenían tasa previa más alta (ver `quality_report.md`, sección 8): hay sesgo de selección. Una comparación antes/después **no demuestra causalidad** y no debe presentarse como efecto de la capacitación |
 
-Observación: tras deduplicar por `queja_id`, las quejas de la región Sur en febrero son 442, coincidiendo con el valor esperado de P02 de `eval/preguntas_ejemplo.jsonl` (brutas: 455). Es evidencia a favor de L1, pero la decisión sigue pendiente.
+Los 8 valores anulados (L2 + L3) y las 199 filas eliminadas figuran uno a uno, con fila de origen y justificación, en `data/quality/transformations_log.csv`.
+
+Las reglas no incluyen respuestas de `eval/preguntas_ejemplo.jsonl`; esas respuestas solo se usan en tests de regresión (`tests/test_prepare_data.py`).
+
+## Limitaciones conocidas
+
+- Cuando faltan pedidos válidos de un día, la tasa de ese período se calcula con todas las quejas y solo los pedidos válidos; puede estar levemente sobrestimada. Las vistas marcan estos períodos (`datos_incompletos`, `dias_con_pedidos_invalidos`) para advertir en las respuestas.
+- No se conoce el valor real de los 8 pedidos anulados.
+- `pedidos = 0`, días faltantes y quejas previas a la apertura: sin casos en este dataset; el pipeline no los trata específicamente.

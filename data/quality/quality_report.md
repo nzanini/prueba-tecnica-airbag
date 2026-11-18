@@ -76,11 +76,11 @@ Violan el contrato del enunciado o una imposibilidad lógica (p. ej. pedidos neg
 4. **Impacto:** Quejas contadas dos veces: infla conteos y tasas.
 5. **Tratamiento recomendado (pendiente de aprobación):** Eliminar copias conservando una por queja_id.
 - Ejemplos:
-  - `139 · Q00098 · copia exacta de la fila 101`
-  - `590 · Q00570 · copia exacta de la fila 574`
-  - `793 · Q00744 · copia exacta de la fila 774`
-  - `863 · Q00829 · copia exacta de la fila 847`
-  - `1755 · Q01705 · copia exacta de la fila 1739`
+  - `161 · Q00135 · copia exacta de la fila 140`
+  - `524 · Q00450 · copia exacta de la fila 464`
+  - `1545 · Q01447 · copia exacta de la fila 1490`
+  - `1642 · Q01518 · copia exacta de la fila 1564`
+  - `1758 · Q01708 · copia exacta de la fila 1683`
 
 #### `V-NEG` — pedidos negativos (ventas_diarias)
 1. **Problema:** pedidos negativos.
@@ -173,11 +173,11 @@ No son necesariamente erróneos: dependen de un criterio estadístico o de una r
   - S076: 13 días (apertura 2026-03-17)
   - S082: 13 días (apertura 2026-03-17)
 - Ejemplos:
-  - `— · S033 · días con ventas=14`
-  - `— · S015 · días con ventas=14`
-  - `— · S076 · días con ventas=13`
   - `— · S037 · días con ventas=14`
   - `— · S059 · días con ventas=14`
+  - `— · S082 · días con ventas=13`
+  - `— · S015 · días con ventas=14`
+  - `— · S076 · días con ventas=13`
 
 #### `S-APERT` — Sucursales abiertas durante el periodo (sucursales)
 1. **Problema:** Sucursales abiertas durante el periodo.

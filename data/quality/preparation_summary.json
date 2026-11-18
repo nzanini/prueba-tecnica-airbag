@@ -1,0 +1,127 @@
+{
+  "reglas": {
+    "extremo_factor_sobre_mediana_sucursal": 10,
+    "quejas_duplicadas_exactas_eliminadas": 199,
+    "quejas_conflictos_sin_resolver": 0,
+    "pedidos_negativos_a_null": 3,
+    "pedidos_extremos_a_null": 5,
+    "pedidos_anulados_total": 8,
+    "atipicos_moderados_conservados": 39
+  },
+  "tablas": {
+    "sucursales": {
+      "originales": 120,
+      "procesados": 120,
+      "eliminados": 0,
+      "modificados": 0
+    },
+    "ventas_diarias": {
+      "originales": 9658,
+      "procesados": 9658,
+      "eliminados": 0,
+      "modificados": 8
+    },
+    "quejas": {
+      "originales": 6845,
+      "procesados": 6646,
+      "eliminados": 199,
+      "modificados": 0
+    },
+    "capacitaciones": {
+      "originales": 36,
+      "procesados": 36,
+      "eliminados": 0,
+      "modificados": 0
+    }
+  },
+  "validaciones": [
+    {
+      "validacion": "quejas procesadas = originales - duplicados exactos",
+      "ok": true,
+      "detalle": "6646 = 6845 - 199"
+    },
+    {
+      "validacion": "queja_id único (salvo conflictos reportados)",
+      "ok": true,
+      "detalle": "ids repetidos=0, filas en conflicto=0, conflictos reportados=0"
+    },
+    {
+      "validacion": "ventas: se conservan todas las filas",
+      "ok": true,
+      "detalle": ""
+    },
+    {
+      "validacion": "ventas: NULL en pedidos = registros anulados",
+      "ok": true,
+      "detalle": "8"
+    },
+    {
+      "validacion": "ventas: valores válidos idénticos al original",
+      "ok": true,
+      "detalle": ""
+    },
+    {
+      "validacion": "ventas: pedidos válidos son positivos o cero",
+      "ok": true,
+      "detalle": ""
+    },
+    {
+      "validacion": "atípicos moderados conservados (no nulos)",
+      "ok": true,
+      "detalle": ""
+    },
+    {
+      "validacion": "integridad referencial ventas_diarias.sucursal_id -> sucursales",
+      "ok": true,
+      "detalle": ""
+    },
+    {
+      "validacion": "integridad referencial quejas.sucursal_id -> sucursales",
+      "ok": true,
+      "detalle": ""
+    },
+    {
+      "validacion": "integridad referencial capacitaciones.sucursal_id -> sucursales",
+      "ok": true,
+      "detalle": ""
+    },
+    {
+      "validacion": "todas las quejas caen en un día operativo de su sucursal",
+      "ok": true,
+      "detalle": "6646 de 6646"
+    },
+    {
+      "validacion": "sin ventas anteriores a la apertura",
+      "ok": true,
+      "detalle": ""
+    },
+    {
+      "validacion": "capacitaciones: se conservan todos los registros",
+      "ok": true,
+      "detalle": ""
+    },
+    {
+      "validacion": "sucursales: se conservan todos los registros",
+      "ok": true,
+      "detalle": ""
+    },
+    {
+      "validacion": "CSV originales sin modificar",
+      "ok": true,
+      "detalle": ""
+    }
+  ],
+  "sha256_raw": {
+    "sucursales.csv": "9b8378a5af7429056cc83e5ba344f8d31faca4a3ae0bf4c8d377fe5613948a7d",
+    "ventas_diarias.csv": "53f97c2bdeef6962783b118c87fd0e0a74a65fb257df69d5f3bdb478f7e0879f",
+    "quejas.csv": "697cc3facf206d776f9fc79ae5119825173bc25560a5f9119936c1b69aca30a6",
+    "capacitaciones.csv": "91cad58faf2a1b171c1ef6f0078e17e5d420aae1b9deb4b1256c00a4a1f41505"
+  },
+  "sha256_processed": {
+    "sucursales.csv": "9b8378a5af7429056cc83e5ba344f8d31faca4a3ae0bf4c8d377fe5613948a7d",
+    "ventas_diarias.csv": "c38dcd0ee9d8216dd6de321a1b4c22861b3c28d49b1faf22138ad1b59299afc0",
+    "ventas_diarias_calidad.csv": "ba1db20713fcf1a1f6c82c6271b5a028656257a39c0e03de5e74ad3c00b398e2",
+    "quejas.csv": "66bc744e7301acb30d931505c0d48b82c48382f7541bad9eb4cb6bb68e3328a7",
+    "capacitaciones.csv": "91cad58faf2a1b171c1ef6f0078e17e5d420aae1b9deb4b1256c00a4a1f41505"
+  }
+}

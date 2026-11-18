@@ -2,27 +2,22 @@
 
 Prueba técnica de ML/AI Engineer (Airbag): un agente LLM que permite a un gerente de la cadena ficticia *Café Tostadero* (120 sucursales, 4 regiones) consultar sus datos en español. Las cifras deben salir de consultas SQL (DuckDB), no del prompt.
 
-**Estado: Fase 1A (inicialización y auditoría de datos).** Todavía no hay agente ni limpieza.
+**Estado: Fase 1B (datos limpios y base DuckDB lista).** Todavía no hay agente LLM ni evaluador.
 
 ## Estructura
 
 ```text
-data/raw/        CSV originales (solo lectura, no se modifican)
-data/processed/  CSV limpios (fase futura, vacío por ahora)
-data/quality/    Reportes generados por la auditoría
-app/             Código (audit_data.py)
-eval/            preguntas_ejemplo.jsonl (preguntas y respuestas esperadas)
+data/raw/        CSV originales (solo lectura)
+data/processed/  CSV limpios + base DuckDB (la base no se versiona)
+data/quality/    Reportes de auditoría y de limpieza
+app/             audit_data.py, prepare_data.py, db.py
+eval/            preguntas_ejemplo.jsonl
 tests/           Pruebas con pytest
-docs/            decisions.md (decisiones técnicas) y reference/ (PDF del enunciado)
-AGENTS.md        Reglas de trabajo del proyecto
+docs/            decisions.md, metrics.md y reference/ (PDF del enunciado)
+AGENTS.md        Reglas de trabajo
 ```
 
-## Requisitos
-
-- Python 3.11 o superior
-- Dependencias: `duckdb`, `pytest` (ver `requirements.txt`)
-
-## Instalación
+## Instalación (Python 3.11+)
 
 ```bash
 python -m venv .venv
@@ -33,27 +28,30 @@ pip install -r requirements.txt
 
 Para fases futuras: copiar `.env.example` a `.env` y completar `GEMINI_API_KEY` y `GEMINI_MODEL` (no se versiona).
 
-## Auditoría de datos
+## Uso
 
 ```bash
-python -m app.audit_data
-python -m pytest
+python -m app.audit_data     # 1) diagnóstico de calidad (solo lectura)
+python -m app.prepare_data   # 2) limpieza + construcción de DuckDB
+python -m pytest -q          # 3) tests
 ```
 
-La auditoría lee solo `data/raw/` y escribe en `data/quality/`:
-
-| Archivo | Contenido |
+| Proceso | Genera |
 |---|---|
-| `quality_report.md` | Reporte legible: errores confirmados, sospechosos, tasas y distribuciones |
-| `quality_summary.json` | Resumen estructurado de todas las validaciones |
-| `quality_issues.csv` | Registros problemáticos (línea del CSV original, clave, detalle) |
+| `audit_data` | `data/quality/quality_report.md`, `quality_summary.json`, `quality_issues.csv` |
+| `prepare_data` | `data/processed/{sucursales,ventas_diarias,ventas_diarias_calidad,quejas,capacitaciones}.csv`, `data/processed/cafe_tostadero.duckdb`, `data/quality/transformations_log.csv`, `data/quality/preparation_summary.json` |
 
-Los reportes se regeneran por completo en cada ejecución. Las recomendaciones de limpieza están **pendientes de aprobación** (ver `docs/decisions.md`).
+Ambos son idempotentes y nunca modifican `data/raw/`.
+
+**Reconstruir DuckDB:** borrar `data/processed/cafe_tostadero.duckdb` (opcional) y ejecutar `python -m app.prepare_data`. En código: `from app.db import get_connection`.
+
+## Reglas de limpieza (resumen)
+
+199 quejas duplicadas eliminadas (quedan 6.646); 8 valores de pedidos (3 negativos y 5 de 99.999) pasan a NULL conservando la fila; el resto de atípicos se conserva. Detalle y consecuencias en [`docs/decisions.md`](docs/decisions.md); definiciones de métricas y esquema en [`docs/metrics.md`](docs/metrics.md).
 
 ## Aún no implementado
 
-- Limpieza de datos (`data/processed/`)
 - Agente LLM con Gemini y herramientas SQL
-- Respuestas de recomendación en JSON
+- Recomendaciones en JSON
 - Script de evaluación y preguntas propias adicionales
 - Estimación de costo y latencia

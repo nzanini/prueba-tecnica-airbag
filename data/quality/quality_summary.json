@@ -416,29 +416,29 @@
       "evidencia": [],
       "ejemplos": [
         [
-          "139",
-          "Q00098",
-          "copia exacta de la fila 101"
+          "161",
+          "Q00135",
+          "copia exacta de la fila 140"
         ],
         [
-          "590",
-          "Q00570",
-          "copia exacta de la fila 574"
+          "524",
+          "Q00450",
+          "copia exacta de la fila 464"
         ],
         [
-          "793",
-          "Q00744",
-          "copia exacta de la fila 774"
+          "1545",
+          "Q01447",
+          "copia exacta de la fila 1490"
         ],
         [
-          "863",
-          "Q00829",
-          "copia exacta de la fila 847"
+          "1642",
+          "Q01518",
+          "copia exacta de la fila 1564"
         ],
         [
-          "1755",
-          "Q01705",
-          "copia exacta de la fila 1739"
+          "1758",
+          "Q01708",
+          "copia exacta de la fila 1683"
         ]
       ]
     },
@@ -618,8 +618,18 @@
       "ejemplos": [
         [
           "—",
-          "S033",
+          "S037",
           "días con ventas=14"
+        ],
+        [
+          "—",
+          "S059",
+          "días con ventas=14"
+        ],
+        [
+          "—",
+          "S082",
+          "días con ventas=13"
         ],
         [
           "—",
@@ -630,16 +640,6 @@
           "—",
           "S076",
           "días con ventas=13"
-        ],
-        [
-          "—",
-          "S037",
-          "días con ventas=14"
-        ],
-        [
-          "—",
-          "S059",
-          "días con ventas=14"
         ]
       ]
     },

@@ -57,6 +57,24 @@ def _q(path: Path) -> str:
     return path.as_posix().replace("'", "''")
 
 
+def crear_ven_out(con) -> None:
+    """Crea ven_out(linea, f_raw, sucursal_id, p, med, mad, z, far_out) a partir de la tabla `ven`.
+
+    Marca pedidos atípicos por sucursal (z modificado con MAD) e indica si además superan la cerca
+    far-out de Tukey. Reutilizada por app.prepare_data para identificar atípicos moderados.
+    """
+    con.execute(f"""
+    CREATE TABLE ven_out AS
+    WITH v AS (SELECT linea, f_raw, sucursal_id, p FROM ven WHERE p > 0),
+    m AS (SELECT sucursal_id, median(p) med, quantile_cont(p,0.25) q1, quantile_cont(p,0.75) q3 FROM v GROUP BY 1),
+    d AS (SELECT v.*, m.med, m.q1, m.q3, abs(p - m.med) ad FROM v JOIN m USING (sucursal_id)),
+    k AS (SELECT sucursal_id, median(ad) mad FROM d GROUP BY 1)
+    SELECT d.linea, d.f_raw, d.sucursal_id, d.p, d.med, k.mad,
+           0.6745 * (d.p - d.med) / k.mad AS z,
+           d.p > d.q3 + 3 * (d.q3 - d.q1) AS far_out
+    FROM d JOIN k USING (sucursal_id) WHERE k.mad > 0 AND abs(0.6745 * (d.p - d.med) / k.mad) > {MAD_Z_CORTE}""")
+
+
 class Auditoria:
     def __init__(self, raw_dir: Path):
         self.raw_dir = Path(raw_dir)
@@ -272,16 +290,7 @@ class Auditoria:
             "Anti-join de (sucursal × calendario desde apertura) contra ventas_diarias.",
             "Totales subestimados; no distingue cierre de dato faltante.", "Confirmar si son cierres; no imputar sin criterio.")
         # Outliers por sucursal: puntaje z modificado (mediana y MAD) y cerca "far-out" de Tukey
-        self.con.execute(f"""
-        CREATE TABLE ven_out AS
-        WITH v AS (SELECT linea, f_raw, sucursal_id, p FROM ven WHERE p > 0),
-        m AS (SELECT sucursal_id, median(p) med, quantile_cont(p,0.25) q1, quantile_cont(p,0.75) q3 FROM v GROUP BY 1),
-        d AS (SELECT v.*, m.med, m.q1, m.q3, abs(p - m.med) ad FROM v JOIN m USING (sucursal_id)),
-        k AS (SELECT sucursal_id, median(ad) mad FROM d GROUP BY 1)
-        SELECT d.linea, d.f_raw, d.sucursal_id, d.p, d.med, k.mad,
-               0.6745 * (d.p - d.med) / k.mad AS z,
-               d.p > d.q3 + 3 * (d.q3 - d.q1) AS far_out
-        FROM d JOIN k USING (sucursal_id) WHERE k.mad > 0 AND abs(0.6745 * (d.p - d.med) / k.mad) > {MAD_Z_CORTE}""")
+        crear_ven_out(self.con)
         n_out = self.scalar("SELECT count(*) FROM ven_out")
         top = self.sql("SELECT p, count(*) FROM ven_out WHERE far_out GROUP BY 1 ORDER BY 2 DESC, 1 DESC LIMIT 5")
         zmod = self.sql("SELECT max(z) FILTER (WHERE NOT far_out) FROM ven_out")[0]
