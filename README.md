@@ -1,127 +1,84 @@
-# prueba-tecnica-airbag
+# Café Tostadero — Asistente analítico con LLM y DuckDB
 
-Prueba técnica de ML/AI Engineer (Airbag): agente LLM en español para que un gerente de *Café Tostadero* (120 sucursales, 4 regiones) consulte datos de ventas, quejas y capacitaciones en DuckDB mediante herramientas SQL.
+Prueba técnica de ML/AI Engineer para Airbag: agente en español que permite a un gerente de *Café Tostadero* (120 sucursales, 4 regiones) consultar ventas, quejas y capacitaciones. Toda cifra proviene de consultas SQL de solo lectura sobre DuckDB, nunca del prompt.
 
-**Estado: Fase 3C (soporte para Gemini directo y OpenRouter vía API compatible con OpenAI).** Todavía no se ejecutó la evaluación completa de las 18 preguntas.
+## Arquitectura resumida
 
-## Estructura
+1. **Auditoría y limpieza (`app/audit_data.py`, `app/prepare_data.py`, `app/db.py`):** diagnostica `data/raw/`, genera datos limpios en `data/processed/` y construye la base local `cafe_tostadero.duckdb` con vistas de métricas (`v_metricas_*`).
+2. **Herramientas y seguridad (`app/sql_guard.py`, `app/tools.py`):** valida estructuralmente el SQL con `sqlglot` (solo `SELECT`/`WITH` sobre relaciones autorizadas), ejecuta en DuckDB de solo lectura sin acceso externo y valida el JSON de recomendaciones (`submit_recommendations`).
+3. **Agente y proveedores (`app/agent.py`, `app/llm.py`, `app/config.py`, `app/prompts.py`):** soporta **OpenRouter** (`google/gemini-3.8-flash`) y **Gemini API directo** (`gemini-3.8-flash` con fallback configurable).
+4. **Evaluación (`eval/run.py`, `eval/scoring.py`):** evalúa respuestas reales u offline sobre `eval/preguntas_ejemplo.jsonl` y `eval/preguntas_propias.jsonl`.
 
-```text
-data/raw/        CSV originales (solo lectura)
-data/processed/  CSV limpios + base DuckDB (cafe_tostadero.duckdb no se versiona)
-data/quality/    Reportes de auditoría, limpieza y trazabilidad
-app/             audit_data.py, prepare_data.py, db.py, config.py, sql_guard.py,
-                 tools.py, llm.py, prompts.py, agent.py, check_models.py
-eval/            preguntas_ejemplo.jsonl, preguntas_propias.jsonl, text_criteria.json,
-                 pricing.json, scoring.py, run.py, results/
-tests/           Pruebas con pytest (auditoría, pipeline, agente, resiliencia y evaluador)
-docs/            decisions.md, metrics.md, eval_cases.md y reference/ (PDF)
-AGENTS.md        Reglas de trabajo
-```
+Detalles completos en [`docs/architecture.md`](docs/architecture.md), [`docs/decisions.md`](docs/decisions.md) y [`docs/metrics.md`](docs/metrics.md).
 
-## Instalación y configuración (Python 3.11+)
+## Requisitos e instalación (Windows PowerShell)
 
-```bash
+Requiere **Python 3.11+**. Desde la raíz del repositorio:
+
+```powershell
 python -m venv .venv
-# Windows (PowerShell):  .venv\Scripts\Activate.ps1
-# macOS / Linux:         source .venv/bin/activate
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-Copiar `.env.example` a `.env` (no se versiona) y elegir el proveedor con `LLM_PROVIDER` (`gemini` u `openrouter`):
+*(En macOS/Linux: `source .venv/bin/activate`).*
 
-- **Gemini API directo (`LLM_PROVIDER=gemini`):** requiere `GEMINI_API_KEY` (no exige `OPENROUTER_API_KEY`). Usa `GEMINI_MODEL` (`gemini-3.8-flash`) y `GEMINI_FALLBACK_MODELS` (`gemini-3.6-flash,gemini-3.5-flash-lite`; `gemini-3.7-flash` está excluido).
-- **OpenRouter (`LLM_PROVIDER=openrouter`):** requiere `OPENROUTER_API_KEY` (no exige `GEMINI_API_KEY`). Usa `OPENROUTER_MODEL` (`google/gemini-3.8-flash`) y `OPENROUTER_BASE_URL` (`https://openrouter.ai/api/v1`). OpenRouter gestiona su propio enrutamiento entre proveedores, por lo que no aplica fallbacks ocultos ni cruza hacia tu clave de Gemini directo.
+## Configuración (`.env`)
 
-También podés pasar `--provider`, `--model` o `--fallback-models` en el CLI.
+Copiar `.env.example` a `.env` (excluido de Git) y completar la clave del proveedor elegido. Airbag puede ejecutar todo el proyecto con su propia clave de **OpenRouter**:
 
-## Preparación de datos y DuckDB
-
-```bash
-python -m app.audit_data     # 1) diagnóstico de calidad (solo lectura)
-python -m app.prepare_data   # 2) limpieza + construcción de cafe_tostadero.duckdb
+```dotenv
+LLM_PROVIDER=openrouter
+OPENROUTER_API_KEY=tu_clave_de_openrouter
+OPENROUTER_MODEL=google/gemini-3.8-flash
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 ```
 
-## Diagnóstico de modelos
+Para usar Gemini directo, definir `LLM_PROVIDER=gemini` y `GEMINI_API_KEY` (no exige `OPENROUTER_API_KEY`).
 
-Antes de correr el agente, podés verificar conectividad, latencia y compatibilidad de function calling únicamente sobre los modelos configurados:
+## Preparación de datos y reconstrucción de DuckDB
 
-```bash
+```powershell
+python -m app.audit_data     # 1) auditoría en solo lectura sobre data/raw/
+python -m app.prepare_data   # 2) limpieza -> data/processed/ + cafe_tostadero.duckdb
+```
+
+`cafe_tostadero.duckdb` está excluida de Git; se reconstruye en segundos con `python -m app.prepare_data`.
+
+## Uso del agente
+
+```powershell
 python -m app.check_models
-```
-
-## Ejecutar el agente
-
-```bash
 python -m app.agent --question "¿Cuántas sucursales tiene la región Costa?"
-python -m app.agent --provider openrouter -q "¿Cuántas sucursales tiene la región Costa?"
-python -m app.agent   # modo interactivo
+python -m app.agent --question "¿Qué sucursales debería visitar esta semana?"
+python -m app.agent          # modo interactivo
 ```
 
-Para diagnósticos y evaluación:
+Opciones: `--provider openrouter|gemini`, `--model <modelo>`, `--verbose` (métricas y trazas en `stderr`) y `--log-file <ruta.jsonl>`. En recomendaciones de visita devuelve únicamente un array JSON con `sucursal_id`, `motivo`, `evidencia` y `accion_sugerida`.
 
-```bash
-python -m app.check_models --provider openrouter
-python -m eval.run --provider openrouter --questions eval/preguntas_ejemplo.jsonl --ids P01,P03
-```
+## Evaluación y tests
 
-Opciones: `--model`, `--fallback-models`, `--verbose` (`-v`, imprime trazabilidad de intentos, fallbacks, latencia y tokens en `stderr` sin afectar `stdout`) y `--log-file <ruta.jsonl>`.
-
-Ejemplos:
-
-```bash
-python -m app.agent -q "¿Cuál fue la tasa de quejas por cada 1,000 pedidos de la región Centro en todo el periodo?"
-python -m app.agent -q "Resume en dos frases de qué se quejan los clientes de la sucursal S104."
-python -m app.agent -q "¿Qué sucursales debería visitar esta semana?"
-```
-
-En recomendaciones de sucursales a visitar, el agente devuelve únicamente un array JSON con `sucursal_id`, `motivo`, `evidencia` y `accion_sugerida`. Si recibe una consulta claramente en otro idioma, responde en español indicando que solo acepta consultas en español.
-
-## Manejo de errores, límites y nivel gratuito
-
-- Se desactivan los reintentos internos del SDK (`HttpRetryOptions(attempts=1)`) para evitar múltiples capas de espera.
-- Timeout por intento: `12 s` (`GEMINI_REQUEST_TIMEOUT_S`); presupuesto total por pregunta: `60 s` (`GEMINI_QUESTION_BUDGET_S`); máximo `1` reintento por modelo (`GEMINI_MAX_RETRIES`).
-- Clasificación de errores:
-  - `401`/`403` o `400`: fallan de inmediato sin reintentos ni fallback ciego.
-  - `404` o `429` por cuota diaria agotada: saltan directo al siguiente fallback.
-  - `429` temporal (RPM/TPM): respeta `Retry-After` si existe y reintenta de forma acotada.
-  - `500`/`503`: reintento acotado con backoff exponencial + jitter, luego fallback.
-  - `504` / timeout de red: salta al siguiente fallback disponible para no agotar el presupuesto.
-- **Nivel gratuito:** los modelos preview o con alta demanda (`gemini-3.8-flash`, `gemini-3.6-flash`) pueden devolver `503`/`504` o tener cuotas RPM/diarias ajustadas.
-- **Si todos los modelos fallan:** el agente devuelve un error explícito en `stderr`/`stdout` con el detalle de cada intento, sin inventar cifras ni respuestas. Verificá `python -m app.check_models`, ajustá `GEMINI_MODEL` / `GEMINI_FALLBACK_MODELS` o reintentá más tarde si el error es `429`/`503`.
-
-## Evaluación (Fase 3A)
-
-Conjuntos de evaluación:
-- `eval/preguntas_ejemplo.jsonl` (10 preguntas originales, sin modificar).
-- `eval/preguntas_propias.jsonl` (8 preguntas desafiantes P11–P18; justificación y SQL en [`docs/eval_cases.md`](docs/eval_cases.md)).
-
-Ejecución real (consume cuota de Gemini; soporta subconjuntos y reanudación):
-
-```bash
-python -m eval.run --questions eval/preguntas_ejemplo.jsonl --ids P01,P03
-python -m eval.run --questions eval/preguntas_propias.jsonl --limit 3 --resume
-```
-
-Ejecución offline (para validar el evaluador con respuestas guardadas o simuladas, sin consumir cuota):
-
-```bash
-python -m eval.run --questions eval/preguntas_ejemplo.jsonl --offline-answers <respuestas.jsonl>
-```
-
-Validar un archivo JSON de recomendaciones o reevaluar respuestas ya guardadas sin llamar al LLM:
-
-```bash
-python -m eval.run --check-recommendations <recomendaciones.json>
+```powershell
+python -m pytest -q
+python -m eval.run --questions eval/preguntas_ejemplo.jsonl --out-dir eval/results/real_ejemplo --resume
+python -m eval.run --questions eval/preguntas_propias.jsonl --out-dir eval/results/real_propias --resume
 python -m eval.run --questions eval/preguntas_ejemplo.jsonl --rescore eval/results/real_ejemplo/results.jsonl
 ```
 
-Los resultados se separan automáticamente en `eval/results/real/` y `eval/results/offline/` (`report.md` legible, `summary.json` con métricas agregadas y `results.jsonl` por pregunta). Tarifas configurables en `eval/pricing.json` y criterios textuales en `eval/text_criteria.json`.
+Reportes generados en `eval/results/<corrida>/` (`report.md`, `summary.json`, `results.jsonl`). Justificación de P11–P18 en [`docs/eval_cases.md`](docs/eval_cases.md).
 
-## Tests
+## Resultados obtenidos (`google/gemini-3.8-flash` vía OpenRouter)
 
-```bash
-python -m pytest -q
-```
+| Conjunto | Resultado | Latencia promedio | Costo promedio / pregunta* |
+|---|---|---|---|
+| Originales V1 / V1 recalculada | 8/10 → **10/10 (100%)** | 11.76s | US\$0.0074 |
+| Originales V2 | **10/10 (100%)** | 9.87s | US\$0.0065 |
+| Propias P11–P18 | **8/8 (100%)** | 9.95s | US\$0.0068 |
 
-Todos los tests corren offline con backends simulados (no consumen cuota de Gemini).
+*\*Estimado con tarifas vigentes en OpenRouter API el 2026-11-18 (US\$0.825 / 1M entrada y US\$4.125 / 1M salida). El 100% aplica a las 18 preguntas evaluadas y no garantiza igual rendimiento ante preguntas desconocidas. Detalle completo en [`docs/evaluation_summary.md`](docs/evaluation_summary.md).*
+
+## Limitaciones y mejoras futuras
+
+- Recomendaciones: sucursales nuevas (13–14 días) pueden aparecer arriba en rankings por tasa con pocas quejas; conviene ponderar por volumen mínimo.
+- Evaluación textual: determinista sin LLM juez; no evalúa fluidez ni negaciones muy alejadas del término.
+- Mejoras futuras: reducir tokens base del `system_prompt` cargando el esquema bajo demanda y agregar evaluación semántica opcional.

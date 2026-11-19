@@ -1,7 +1,24 @@
 {
   "currency": "USD",
-  "note": "Tarifas configurables por 1.000.000 de tokens (null = tarifa no verificada; el costo se reporta como desconocido).",
+  "source": "https://openrouter.ai/api/v1/models",
+  "verified_at": "2026-11-18",
+  "note": "Tarifas por 1.000.000 de tokens verificadas en la API pública de OpenRouter (prompt/completion). Para Gemini directo (gemini-3.8-flash, etc.) se dejan en null cuando no se verificó la tarifa del nivel gratuito/pago.",
   "models": {
+    "google/gemini-3.8-flash": {
+      "input_per_1m": 0.825,
+      "output_per_1m": 4.125,
+      "verified": true
+    },
+    "google/gemini-3.6-flash": {
+      "input_per_1m": 0.75,
+      "output_per_1m": 3.75,
+      "verified": true
+    },
+    "google/gemini-3.5-flash-lite": {
+      "input_per_1m": 0.3,
+      "output_per_1m": 2.5,
+      "verified": true
+    },
     "gemini-3.8-flash": {
       "input_per_1m": null,
       "output_per_1m": null,
