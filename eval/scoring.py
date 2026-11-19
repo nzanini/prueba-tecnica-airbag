@@ -234,10 +234,22 @@ def evaluate_item(item: dict, answer_text: str, criteria_map: dict[str, dict] | 
             invented_nums = []
             if "allowed_numbers" in crit:
                 allowed = {float(x) for x in crit["allowed_numbers"]}
+                ctx_cfg = crit.get("contextual_numbers") or {}
+                ctx_vals = {float(x) for x in ctx_cfg.get("values", [])}
+                req_near = [normalize_text(w) for w in ctx_cfg.get("require_near_any", [])]
+                forb_near = [normalize_text(w) for w in ctx_cfg.get("forbid_near_any", [])]
                 cleaned_ans = _strip_unit_and_date_noise(answer_text)
-                for val in _numbers_in(cleaned_ans):
-                    if val not in allowed:
-                        invented_nums.append(val)
+                for m in re.finditer(r"(?<![A-Za-z0-9_])(-?\d[\d.,]*)(?![A-Za-z0-9_])", cleaned_ans):
+                    val = _parse_number_token(m.group(1))
+                    if val is None or val in allowed:
+                        continue
+                    if val in ctx_vals:
+                        ctx_win = normalize_text(cleaned_ans[max(0, m.start() - 40):m.end() + 40])
+                        has_req = (not req_near) or any(w in ctx_win for w in req_near)
+                        has_forb = any(w in ctx_win for w in forb_near)
+                        if has_req and not has_forb:
+                            continue
+                    invented_nums.append(val)
             if not missing_groups and not forbidden and not invented_nums:
                 return {"estado": "correct", "valor_extraido": answer_text.strip(), "motivo": ""}
             mot = []

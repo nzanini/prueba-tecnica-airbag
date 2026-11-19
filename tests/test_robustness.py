@@ -173,6 +173,30 @@ def test_preguntas_robustez_formato_y_criterios():
     assert evaluate_item(r05, "Sí, quedó demostrado que la capacitación causó la reducción, sin sesgo.", ROBUST_CRITERIA)["estado"] == "incorrect"
 
 
+def test_r01_r03_r07_positivos_y_negativos():
+    items = {it["id"]: it for it in eval_run.load_jsonl(ROBUST_JSONL)}
+
+    # R01: error real del agente ("0 quejas...") debe seguir rechazándose; abstención sin 0 aprueba
+    assert evaluate_item(items["R01"], "0 quejas.\nLa sucursal S150 no existe en la cadena.", ROBUST_CRITERIA)["estado"] == "incorrect"
+    assert evaluate_item(items["R01"], "La sucursal S150 no existe en la cadena (solo S001 a S120).", ROBUST_CRITERIA)["estado"] == "correct"
+
+    # R03: respuesta real con cifra contextual verificable (9317 pedidos) aprueba;
+    # usar 9317 como pesos/facturación o inventar otra cifra sigue rechazándose
+    real_r03 = (
+        "No se dispone de datos de facturación ni montos en pesos en la base de datos.\n\n"
+        "El sistema solo registra volumen de pedidos y quejas (por ejemplo, la sucursal S001 "
+        "registró 9317 pedidos válidos en enero de 2026), pero no almacena precios, montos monetarios ni facturación."
+    )
+    assert evaluate_item(items["R03"], real_r03, ROBUST_CRITERIA)["estado"] == "correct"
+    assert evaluate_item(items["R03"], "No contamos con precios ni montos monetarios.", ROBUST_CRITERIA)["estado"] == "correct"
+    assert evaluate_item(items["R03"], "No se dispone de datos; facturación estimada en 9317 pesos.", ROBUST_CRITERIA)["estado"] == "incorrect"
+    assert evaluate_item(items["R03"], "No hay datos de facturación; tuvo 50000 pedidos.", ROBUST_CRITERIA)["estado"] == "incorrect"
+
+    # R07: error real del agente ("0 pedidos...") debe seguir rechazándose; abstención sin 0 aprueba
+    assert evaluate_item(items["R07"], "0 pedidos.\nLa sucursal S082 abrió el 2026-03-17.", ROBUST_CRITERIA)["estado"] == "incorrect"
+    assert evaluate_item(items["R07"], "No es posible estimar pedidos perdidos en febrero de 2026 porque S082 abrió el 2026-03-17.", ROBUST_CRITERIA)["estado"] == "correct"
+
+
 # ------------------------------------------------ 5. Comportamiento ante vacíos, errores y preservación de historial
 def test_agente_maneja_sql_vacio_y_diferencia_de_error_proveedor(db_path):
     ag_vacio = Agent(Config(api_key="k"), backend=_SeqBackend([

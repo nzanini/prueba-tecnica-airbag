@@ -1,0 +1,55 @@
+{
+  "mode": "real",
+  "questions_file": "eval/preguntas_robustez.jsonl",
+  "total_questions": 7,
+  "evaluated_questions": 7,
+  "counts": {
+    "correct": 5,
+    "incorrect": 2,
+    "not_evaluable": 0,
+    "extraction_error": 0,
+    "provider_error": 0
+  },
+  "accuracy_evaluated": 0.7143,
+  "success_rate_total": 0.7143,
+  "by_type": {
+    "texto": {
+      "total": 7,
+      "correct": 5,
+      "evaluated": 7,
+      "accuracy_evaluated": 0.7143,
+      "success_rate_total": 0.7143
+    }
+  },
+  "latency": {
+    "samples": 7,
+    "total_s": 76.147,
+    "mean_s": 10.878,
+    "median_s": 9.595,
+    "p95_s": 14.428
+  },
+  "llm": {
+    "total_attempts": 20,
+    "total_calls": 20,
+    "total_failures": 0,
+    "total_retries": 0,
+    "total_model_switches": 0,
+    "fallback_questions": 0,
+    "models_used": [
+      "google/gemini-3.8-flash"
+    ]
+  },
+  "tools": {
+    "total_calls": 13,
+    "total_errors": 0,
+    "questions_without_tools": 0
+  },
+  "tokens_and_cost": {
+    "input_tokens": 60413,
+    "output_tokens": 2849,
+    "tokens_partial_questions": 0,
+    "known_cost_usd": 0.061592,
+    "cost_unknown_questions": 0
+  },
+  "rescored_from": "eval/results/real_robustez_v1/results.jsonl"
+}
