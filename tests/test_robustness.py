@@ -294,3 +294,31 @@ def test_agente_maneja_sql_vacio_y_diferencia_de_error_proveedor(db_path):
         assert r_err.kind == "error" and "503" in r_err.answer
     finally:
         ag_err.close()
+
+
+def test_generalizacion_sucursal_inexistente_cualquiera(db_path):
+    """Una sucursal inexistente no vista (ej. S225) debe tratarse igual que S150, sin reglas por ID."""
+    tb = ToolBox(db_path)
+    try:
+        res = tb.call("get_branch_summary", {"sucursal_id": "S225"})
+        assert res["ok"] is False and "no existe" in res["error"].lower()
+
+        rec = tb.call("submit_recommendations", {"recomendaciones": [{
+            "sucursal_id": "S225",
+            "motivo": "Prueba",
+            "evidencia": "0 quejas",
+            "accion_sugerida": "Revisar",
+        }]})
+        assert rec["ok"] is False and "no existe" in rec["error"].lower()
+    finally:
+        tb.close()
+
+    ag = Agent(Config(api_key="k"), backend=_SeqBackend([
+        Turn(calls=[ToolCall("run_sql", {"query": "SELECT count(*) FROM sucursales WHERE sucursal_id='S225'"})], content={}),
+        Turn(text="La sucursal S225 no existe en los registros (van de S001 a S120).", content={}),
+    ]), db_path=db_path)
+    try:
+        r = ag.ask("¿Cuántas quejas recibió la sucursal S225 en febrero?")
+        assert r.kind == "text" and "no existe" in r.answer.lower()
+    finally:
+        ag.close()

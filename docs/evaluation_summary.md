@@ -1,6 +1,6 @@
 # Resumen consolidado de evaluaciones reales y costos
 
-Todas las evaluaciones reales se ejecutaron mediante **OpenRouter** con el modelo **`google/gemini-3.8-flash`**, sin fallos de proveedor, sin reintentos y sin fallbacks activados (`0` errores de herramientas).
+Todas las evaluaciones reales se ejecutaron mediante **OpenRouter** con el modelo **`google/gemini-3.8-flash`**, sin fallos de proveedor, sin reintentos y sin fallbacks activados (`0` errores de herramientas en V1–V3/Propias V1/Robustez V1–V2, y `1` error de herramienta recuperado en Propias V3).
 
 > **Alcance:** los resultados de `100%` corresponden exclusivamente a los conjuntos evaluados (10 preguntas originales + 8 preguntas propias) y no garantizan el mismo rendimiento ante preguntas desconocidas.
 
@@ -12,7 +12,9 @@ Todas las evaluaciones reales se ejecutaron mediante **OpenRouter** con el model
 | **V1 recalculada** (`real_ejemplo_rescored`) | `eval/preguntas_ejemplo.jsonl` | Reevaluada offline (`--rescore`) | **100.0%** | 10/10 | 117.63s / 11.763s / 18.972s | 26 / 16 | 72.542 / 3.459 | Sí (`d092be7`) |
 | **V2** (`real_ejemplo_v2`) | `eval/preguntas_ejemplo.jsonl` | Nueva corrida real | **100.0%** | 10/10 | 98.678s / 9.868s / 13.933s | 24 / 14 | 63.155 / 3.058 | Sí (`d092be7`) |
 | **V3** (`real_ejemplo_v3`) | `eval/preguntas_ejemplo.jsonl` | Corrida real tras ajustes de prompt/robustez | **100.0%** | 10/10 | 89.721s / 8.972s / 10.619s | 22 / 12 | 61.843 / 3.481 | Local |
-| **Propias V1** (`real_propias_v1`) | `eval/preguntas_propias.jsonl` | Corrida real (anterior a ajustes 4B/4C) | **100.0%** | 8/8 | 79.631s / 9.954s / 14.627s | 18 / 10 | 47.751 / 3.595 | Sí (`50a59c3`) |
+| **Propias V1** (`real_propias_v1`) | `eval/preguntas_propias.jsonl` | Corrida real previa (no existe V2 de propias) | **100.0%** | 8/8 | 79.631s / 9.954s / 14.627s | 18 / 10 | 47.751 / 3.595 | Sí (`50a59c3`) |
+| **Propias V3** (`real_propias_v3`) | `eval/preguntas_propias.jsonl` | Corrida real posterior (1 error herr. en P17) | **87.5%** | 7/8 | 70.135s / 8.767s / 14.4s | 19 / 11 | 54.863 / 2.996 | Local |
+| **Propias V3 recalculada** (`real_propias_v3_rescored`) | `eval/preguntas_propias.jsonl` | Reevaluada offline (`--rescore` P16) | **100.0%** | 8/8 | 70.135s / 8.767s / 14.4s | 19 / 11 | 54.863 / 2.996 | Local |
 | **Smoke** (`smoke_openrouter`) | `eval/preguntas_ejemplo.jsonl` (P01, P03) | Prueba inicial | **100.0%** | 2/2 | 20.657s / 10.329s / 11.674s | 4 / 2 | 10.296 / 744 | Sí (`d092be7`) |
 | **Robustez V1** (`real_robustez_v1`) | `eval/preguntas_robustez.jsonl` | Corrida real preservada | **57.1%** | 4/7 | 76.147s / 10.878s / 14.428s | 20 / 13 | 60.413 / 2.849 | Local |
 | **Robustez V1 recalculada** (`real_robustez_v1_rescored`) | `eval/preguntas_robustez.jsonl` | Reevaluada offline (`--rescore`) | **71.4%** | 5/7 | 76.147s / 10.878s / 14.428s | 20 / 13 | 60.413 / 2.849 | Local |
@@ -20,8 +22,9 @@ Todas las evaluaciones reales se ejecutaron mediante **OpenRouter** con el model
 
 *Notas:*
 - *V3 (`real_ejemplo_v3`):* `numero` 4/4, `lista` 1/1, `texto` 5/5; costo estimado **US\$0.06538** (promedio US\$0.006538/pregunta).
-- *Propias (`P11`–`P18`):* `8/8` en `real_propias_v1`; falta repetir la corrida en la versión final.
+- *Propias V3 y V3 recalculada:* no existe una corrida V2 de preguntas propias. En `real_propias_v3`, el agente respondió correctamente `P16` (`3.49` vs `2.15`, sesgo de selección y `"no permite aislar el impacto causal"`), pero `eval/scoring.py` la marcó `incorrect` por no reconocer esa formulación. El `--rescore` (`real_propias_v3_rescored`, `8/8`, costo estimado **US\$0.05762**) corrigió ese falso negativo del evaluador, **pero no constituye una nueva ejecución del modelo**.
 - *Robustez V2 (`real_robustez_v2`):* `7/7` (`texto` 7/7); costo estimado **US\$0.060631** (promedio US\$0.008662/pregunta). Detalle en [`docs/robustness_analysis.md`](robustness_analysis.md).
+- *Limitaciones del scoring y validación:* el evaluador determinista (`eval/scoring.py`) depende de patrones/criterios configurados (`text_criteria.json`, `robustness_criteria.json`) y puede requerir ampliación ante paráfrasis nuevas; a su vez, `validate_recommendations()` verifica cifras simples y contradicciones directas por sucursal/grupo, pero no inferencias estadísticas complejas.
 - *Prueba manual de recomendaciones JSON:* solicitó priorizar 3 sucursales de la última semana; devolvió JSON válido para `S014`, `S056` y `S002` en `38.246s`, con `8` llamadas al LLM y `8` llamadas a herramientas (incluyendo 1 error inicial de `submit_recommendations` recuperado automáticamente por el agente, cuya causa raíz fue corregida en la fase 4C).
 
 ### Desglose por tipo de pregunta (V1 recalculada, V2 y Propias V1)

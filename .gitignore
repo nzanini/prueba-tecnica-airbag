@@ -21,3 +21,6 @@ Thumbs.db
 .vscode/
 
 *.duckdb.tmp
+
+# Corridas locales/externas de evaluación (conserva los históricos versionados en eval/results/)
+eval/results/local/

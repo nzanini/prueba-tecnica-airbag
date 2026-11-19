@@ -1,65 +1,72 @@
 # Café Tostadero — Asistente analítico con LLM y DuckDB
 
-Prueba técnica de ML/AI Engineer para Airbag: agente en español que permite a un gerente de *Café Tostadero* (120 sucursales, 4 regiones) consultar ventas, quejas y capacitaciones. Toda cifra proviene de consultas SQL de solo lectura sobre DuckDB, nunca del prompt.
+Prueba técnica de ML Engineer para Airbag: agente en español que permite a un gerente regional de *Café Tostadero* (120 sucursales, 4 regiones, período `2026-01-05` a `2026-03-29`) consultar ventas, quejas y capacitaciones, o solicitar recomendaciones priorizadas en JSON.
 
 ## Arquitectura resumida
 
-1. **Auditoría y limpieza (`app/audit_data.py`, `app/prepare_data.py`, `app/db.py`):** diagnostica `data/raw/`, genera CSV limpios en `data/processed/` y construye `cafe_tostadero.duckdb` con vistas de métricas (`v_metricas_*`).
-2. **Herramientas y seguridad (`app/sql_guard.py`, `app/tools.py`):** valida el AST SQL con `sqlglot` (solo `SELECT`/`WITH` sobre tablas y vistas autorizadas), consulta DuckDB en modo solo lectura sin acceso externo y valida recomendaciones JSON (`submit_recommendations`).
-3. **Agente y proveedores (`app/agent.py`, `app/llm.py`, `app/config.py`, `app/prompts.py`):** soporta **OpenRouter** (`google/gemini-3.8-flash`) y **Gemini API directo** (`gemini-3.8-flash` con fallback configurable).
-4. **Evaluación (`eval/run.py`, `eval/scoring.py`):** evalúa `eval/preguntas_ejemplo.jsonl`, `eval/preguntas_propias.jsonl` y `eval/preguntas_robustez.jsonl`.
+1. **Auditoría y limpieza (`app/audit_data.py`, `app/prepare_data.py`, `app/db.py`):** diagnostica `data/raw/`, genera CSV limpios en `data/processed/` y construye `cafe_tostadero.duckdb` con vistas de métricas (`v_metricas_dia`, `v_metricas_semana_sucursal`, `v_metricas_sucursal`).
+2. **Herramientas y seguridad (`app/sql_guard.py`, `app/tools.py`):** valida el AST SQL con `sqlglot` (solo `SELECT`/`WITH` sobre tablas/vistas autorizadas), consulta DuckDB en solo lectura (`enable_external_access=false`) y valida recomendaciones (`submit_recommendations`).
+3. **Agente y proveedores (`app/agent.py`, `app/llm.py`, `app/config.py`, `app/prompts.py`):** soporta **OpenRouter** (`google/gemini-3.8-flash`, usado en las evaluaciones reales) y **Gemini API directo** (`gemini-3.8-flash` con fallback configurable). Las claves se leen desde variables de entorno (`.env`).
+4. **Evaluación (`eval/run.py`, `eval/scoring.py`):** evalúa preguntas `.jsonl` con extracción determinista (sin LLM juez), trazas opcionales (`--save-traces`) y reanudación segura (`--resume`).
 
-## Inicio rápido (Windows PowerShell, Python 3.11+)
+Detalle técnico en [`docs/architecture.md`](docs/architecture.md), [`docs/metrics.md`](docs/metrics.md) y [`docs/decisions.md`](docs/decisions.md).
+
+## Instalación y ejecución desde cero
+
+Requisitos: **Python 3.11+**, **Git** y una clave de **OpenRouter** (`OPENROUTER_API_KEY`) o **Gemini API** (`GEMINI_API_KEY`).
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1          # Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
-Copy-Item .env.example .env       # completar OPENROUTER_API_KEY (o GEMINI_API_KEY)
-python -m app.prepare_data        # genera data/processed/ y cafe_tostadero.duckdb
+Copy-Item .env.example .env           # Linux/macOS: cp .env.example .env (completar API key)
+python -m app.prepare_data            # genera data/processed/ y cafe_tostadero.duckdb
 ```
 
-Guía paso a paso completa (incluyendo diagnóstico, `--verbose`, modo interactivo y problemas frecuentes): [`docs/getting_started.md`](docs/getting_started.md).
-
-## Consultas, evaluador y tests
-
 ```powershell
+# Consultar al agente (texto o JSON exclusivo en recomendaciones)
 python -m app.agent --question "¿Cuántas sucursales tiene la región Costa?"
 python -m app.agent --question "¿Qué sucursales debería visitar esta semana?"
+
+# Tests offline (sin API key)
 python -m pytest -q
+
+# Evaluar conjuntos sin sobrescribir históricos (eval/results/local/ está en .gitignore)
+python -m eval.run --questions eval/preguntas_ejemplo.jsonl --out-dir eval/results/local/ejemplo --save-traces
+python -m eval.run --questions eval/preguntas_propias.jsonl --out-dir eval/results/local/propias --save-traces
+python -m eval.run --questions eval/preguntas_robustez.jsonl --out-dir eval/results/local/robustez --save-traces
 ```
 
-Para correr evaluaciones sin sobrescribir resultados históricos, usá siempre un `--out-dir` nuevo:
+Guía completa paso a paso (Windows, Linux/macOS, `--resume`, `--rescore` y diagnóstico): [`docs/getting_started.md`](docs/getting_started.md).
 
-```powershell
-python -m eval.run --questions eval/preguntas_ejemplo.jsonl --out-dir eval/results/mi_corrida_ejemplo --resume
-python -m eval.run --questions eval/preguntas_propias.jsonl --out-dir eval/results/mi_corrida_propias --resume
-python -m eval.run --questions eval/preguntas_robustez.jsonl --out-dir eval/results/mi_corrida_robustez --resume
-```
+## Calidad de datos y control de alucinaciones
 
-## Resultados principales (`google/gemini-3.8-flash` vía OpenRouter)
+- **Hallazgos y tratamiento (`data/raw/` → `data/processed/`):** se eliminaron **199 quejas duplicadas exactas** (`6.845` → `6.646` únicas); se pasaron a `NULL` **3 pedidos negativos** (`-5`, `-44`, `-14`) y **5 valores extremos** (`99999`), preservando las filas y el registro en `data/quality/transformations_log.csv`; las **6 sucursales abiertas a mitad de marzo** (`13–14` días operativos) se calculan desde su `fecha_apertura` sin imputar ceros previos; y en capacitaciones (`36` capacitadas, `84` sin capacitar) se documenta el sesgo de selección (`por_desempeno` `3.49`‰ vs `aleatorio` `2.15`‰ previo).
+- **Cómo se evita inventar cifras:** ningún CSV entra en el *prompt*; toda cifra proviene de DuckDB vía *function calling* en solo lectura; `app/prompts.py` distingue `0` observado de entidad inexistente, fuera de período o estimación contrafactual; y `submit_recommendations` exige respaldo numérico por sucursal/grupo y rechaza contradicciones comprobables.
 
-| Conjunto | Resultado | Latencia media | Costo estimado* |
+## Decisiones principales y evaluación
+
+- **SQL + DuckDB embebido (en lugar de RAG o fine-tuning):** las preguntas requieren agregaciones, filtros y tasas exactas sobre tablas estructuradas.
+- **Evaluador determinista (sin LLM juez):** extrae números, listas ordenadas y criterios textuales con tolerancias explícitas (`eval/scoring.py`), separando errores del proveedor, agente, herramienta y evaluador (`summary.json`).
+- **Preguntas adicionales (comportamiento general, sin memorizar IDs):**
+  - **8 propias (`eval/preguntas_propias.jsonl`, P11–P18):** prueban deduplicación, exclusión de pedidos inválidos, días operativos en sucursales nuevas, anti-join de capacitaciones, semanas lunes–domingo, sesgo de selección, tasa vs volumen y detección de datos incompletos.
+  - **7 de robustez (`eval/preguntas_robustez.jsonl`, R01–R07):** prueban abstención ante sucursal inexistente, fuera de período, métrica ausente, datos externos, causalidad injustificada, muestra insuficiente y demanda contrafactual.
+  - Justificación detallada y SQL de referencia en [`docs/eval_cases.md`](docs/eval_cases.md).
+
+## Estimaciones históricas de rendimiento y costos (`google/gemini-3.8-flash` vía OpenRouter)
+
+| Conjunto | Resultado | Latencia media | Costo total estimado* |
 |---|---|---|---|
-| Originales V3 (`real_ejemplo_v3`) | **10/10 (100%)** | 8.972s | US\$0.06538 |
-| Propias P11–P18 (`real_propias_v1`, corrida previa) | **8/8 (100%)** | 9.954s | US\$0.054224 |
-| Robustez R01–R07 V2 (`real_robustez_v2`) | **7/7 (100%)** | 10.554s | US\$0.060631 |
+| Originales V3 (`real_ejemplo_v3`) | **10/10 (100%)** | 8.972s | US\$0.06538 (~US\$0.0065/preg.) |
+| Propias V1 (`real_propias_v1`) | **8/8 (100%)** | 9.954s | US\$0.054224 (~US\$0.0068/preg.) |
+| Propias V3 / V3 rescored (`real_propias_v3*`) | **7/8** → **8/8** (`--rescore` P16)** | 8.767s | US\$0.05762 (~US\$0.0072/preg.) |
+| Robustez V2 (`real_robustez_v2`) | **7/7 (100%)** | 10.554s | US\$0.060631 (~US\$0.0087/preg.) |
 
-*\*Calculado con tarifas de OpenRouter API al 2026-11-18 (US\$0.825 / 1M entrada y US\$4.125 / 1M salida). Aplica únicamente a los conjuntos evaluados.*
+*\*Estimaciones históricas sobre tarifas de OpenRouter API al 2026-11-18 (US\$0.825 / 1M entrada, US\$4.125 / 1M salida). No representan facturación oficial ni garantizan igual desempeño en preguntas nuevas. **El rescoring de P16 corrigió un falso negativo del evaluador sin reejecutar el modelo.*
 
-## Limitaciones y evolución futura
+Detalle completo en [`docs/evaluation_summary.md`](docs/evaluation_summary.md), [`docs/robustness_analysis.md`](docs/robustness_analysis.md) y [`docs/lessons_learned.md`](docs/lessons_learned.md).
 
-- Rankings por tasa en recomendaciones: sucursales nuevas (13–14 días) pueden aparecer arriba con pocos pedidos si no se filtra por volumen mínimo.
-- Evaluación textual: determinista (sin LLM juez); depende de criterios configurados.
-- Evolución: la interfaz CLI y `answer_question()` permiten conectar el agente a una API HTTP o dashboard web y realizar comparaciones A/B de modelos.
+## Limitaciones y mejoras futuras
 
-## Documentación
-
-- [`docs/getting_started.md`](docs/getting_started.md) — Guía de instalación, uso y solución de problemas
-- [`docs/evaluation_summary.md`](docs/evaluation_summary.md) — Resultados históricos (V1–V3, propias, robustez) y costos
-- [`docs/robustness_analysis.md`](docs/robustness_analysis.md) — Análisis detallado de R01–R07
-- [`docs/lessons_learned.md`](docs/lessons_learned.md) — Explicación de negocio, elección de modelo e interfaz
-- [`docs/architecture.md`](docs/architecture.md) — Arquitectura, calidad de datos y aprendizajes técnicos
-- [`docs/decisions.md`](docs/decisions.md) — Registro de decisiones técnicas
-- [`docs/metrics.md`](docs/metrics.md) — Esquema DuckDB y definición de métricas
-- [`docs/eval_cases.md`](docs/eval_cases.md) — Justificación y SQL de referencia de P11–P18 y R01–R07
+- **Limitaciones:** el scoring textual determinista depende de reglas configuradas (`eval/text_criteria.json`, `eval/robustness_criteria.json`); el validador de recomendaciones verifica cifras simples y contradicciones directas, no inferencias estadísticas complejas; y los rankings por tasa pueden priorizar sucursales nuevas con pocos pedidos si no se fija volumen mínimo.
+- **Mejoras futuras:** comparación A/B controlada frente a otros modelos, ponderación/umbral mínimo de pedidos en recomendaciones, evaluación semántica opcional y exposición de `answer_question()` mediante API HTTP o interfaz web ligera.
