@@ -23,6 +23,7 @@ from eval.scoring import evaluate_item, evaluate_recommendations_json
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CRITERIA = ROOT / "eval" / "text_criteria.json"
+DEFAULT_ROBUSTNESS_CRITERIA = ROOT / "eval" / "robustness_criteria.json"
 DEFAULT_PRICING = ROOT / "eval" / "pricing.json"
 DEFAULT_REAL_DIR = ROOT / "eval" / "results" / "real"
 DEFAULT_OFFLINE_DIR = ROOT / "eval" / "results" / "offline"
@@ -237,6 +238,8 @@ def run_evaluation(
         questions = questions[: max(0, limit)]
 
     criteria = load_json(criteria_path)
+    if criteria_path == DEFAULT_CRITERIA and DEFAULT_ROBUSTNESS_CRITERIA.exists():
+        criteria = {**criteria, **load_json(DEFAULT_ROBUSTNESS_CRITERIA)}
     pricing = load_json(pricing_path)
 
     existing: dict[str, dict] = {}
@@ -368,6 +371,8 @@ def rescore_results(
     questions = {q["id"]: q for q in load_jsonl(questions_path)}
     stored = load_jsonl(results_path)
     criteria = load_json(criteria_path)
+    if criteria_path == DEFAULT_CRITERIA and DEFAULT_ROBUSTNESS_CRITERIA.exists():
+        criteria = {**criteria, **load_json(DEFAULT_ROBUSTNESS_CRITERIA)}
     out_dir = out_dir or results_path.parent.with_name(results_path.parent.name + "_rescored")
 
     new_records: list[dict] = []

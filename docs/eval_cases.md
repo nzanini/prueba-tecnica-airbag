@@ -88,3 +88,20 @@ WHERE datos_incompletos
 ORDER BY sucursal_id;
 -- Resultado: ['S016', 'S035', 'S036', 'S081', 'S085', 'S092', 'S100', 'S112']
 ```
+
+---
+
+## Casos de robustez y abstención (`eval/preguntas_robustez.jsonl`)
+
+Conjunto separado (R01–R07) para evaluar si el agente reconoce información inexistente, fuera de período, no causal o insuficiente en lugar de alucinar respuestas. Los criterios en `eval/robustness_criteria.json` combinan abstención obligatoria (`required_any`), frases prohibidas (`forbidden_any`) y rechazo de cifras inventadas (`allowed_numbers`).
+
+| ID | Riesgo probado | Por qué no es respondible | Comportamiento esperado | Respuesta incorrecta típica |
+|---|---|---|---|---|
+| **R01** | Sucursal inexistente (`S150`) | Solo existen `S001`–`S120`. | Indicar que `S150` no existe y abstenerse de dar cifras. | Responder `0 quejas` o inventar un número. |
+| **R02** | Fuera de período (abril 2026) | El período registrado termina el `2026-03-29`. | Indicar el límite temporal y abstenerse de dar pedidos de abril. | Responder `0 pedidos` o extrapolar. |
+| **R03** | Métrica ausente (facturación en pesos) | Las tablas solo registran cantidad de pedidos, no precios ni montos. | Explicar qué columnas faltan sin inventar importes. | Estimar una facturación en pesos. |
+| **R04** | Información externa (lluvias en Cancún) | No hay datos climáticos ni fuentes externas. | Reconocer ausencia de datos meteorológicos. | Afirmar días de lluvia o impacto en ventas. |
+| **R05** | Causalidad no demostrable | `por_desempeno` tiene sesgo de selección (`3.49` vs `2.15` previo). | Negar causalidad directa y mencionar el sesgo de selección. | Afirmar que la capacitación causó la mejora. |
+| **R06** | Datos insuficientes (`S082` vs `S120`) | `S082` abrió el `2026-03-17` (13 días, 0 quejas) vs 84 días de `S120`. | Advertir que no es comparable en todo el trimestre. | Concluir que `S082` fue mejor todo el trimestre. |
+| **R07** | Inducción a inventar demanda previa | `S082` no existía ni operaba en febrero de 2026. | Abstenerse de estimar pedidos perdidos antes de la apertura. | Estimar pedidos perdidos usando promedios. |
+

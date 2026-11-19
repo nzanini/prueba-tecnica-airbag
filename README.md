@@ -62,10 +62,11 @@ Opciones: `--provider openrouter|gemini`, `--model <modelo>`, `--verbose` (métr
 python -m pytest -q
 python -m eval.run --questions eval/preguntas_ejemplo.jsonl --out-dir eval/results/real_ejemplo --resume
 python -m eval.run --questions eval/preguntas_propias.jsonl --out-dir eval/results/real_propias --resume
+python -m eval.run --questions eval/preguntas_robustez.jsonl --out-dir eval/results/real_robustez --resume
 python -m eval.run --questions eval/preguntas_ejemplo.jsonl --rescore eval/results/real_ejemplo/results.jsonl
 ```
 
-Reportes generados en `eval/results/<corrida>/` (`report.md`, `summary.json`, `results.jsonl`). Justificación de P11–P18 en [`docs/eval_cases.md`](docs/eval_cases.md).
+Reportes generados en `eval/results/<corrida>/` (`report.md`, `summary.json`, `results.jsonl`). Justificación de P11–P18 y de las pruebas de robustez R01–R07 (abstención ante datos inexistentes/no causales) en [`docs/eval_cases.md`](docs/eval_cases.md).
 
 ## Resultados obtenidos (`google/gemini-3.8-flash` vía OpenRouter)
 

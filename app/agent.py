@@ -57,6 +57,19 @@ def is_non_spanish_query(question: str) -> bool:
     return hits >= 2 or (len(tokens) <= 3 and hits >= 1 and any(t in {"hello", "hi", "english"} for t in tokens))
 
 
+_REC_TARGET_RE = re.compile(r"\bsucursal(?:es)?\b|\btiendas?\b|\blocales?\b", re.IGNORECASE)
+_REC_INTENT_RE = re.compile(
+    r"\b(?:visitar|visita|visito|recomiend\w*|recomendaci[oó]n(?:es)?|prioriz\w*|inspeccion\w*|revisar|atender|ir\s+a\s+ver|conviene\s+ir|deber[ií]a\s+ir)\b",
+    re.IGNORECASE,
+)
+
+
+def is_recommendation_request(question: str) -> bool:
+    """Detecta solicitudes de recomendación de sucursales a visitar/priorizar sin LLM adicional."""
+    q = (question or "").strip()
+    return bool(_REC_TARGET_RE.search(q) and _REC_INTENT_RE.search(q))
+
+
 @dataclass
 class AgentResult:
     question: str
@@ -138,6 +151,7 @@ class Agent:
 
         history = [be.user_content(question)]
         answer, kind, data, error, json_retries = "", "text", None, None, 0
+        rec_required = is_recommendation_request(question)
         active_model: str | None = None
 
         def record_attempts(att_list: list[dict], fallback_model: str | None = None):
@@ -208,7 +222,7 @@ class Agent:
             try:
                 parsed = parse_recommendations_text(text)
                 if parsed is not None:
-                    data, warns = validate_recommendations(parsed, tb._valid_ids, tb.corpus)
+                    data, warns = validate_recommendations(parsed, tb._valid_ids, tb.corpus, tb.evidence_records)
                     tb.warnings = warns
                     kind, answer = "json", json.dumps(data, ensure_ascii=False, indent=2)
                     break
@@ -219,6 +233,16 @@ class Agent:
                         f"Tu respuesta JSON no es válida: {e} Corregila y enviala con la herramienta submit_recommendations.")]
                     continue
                 error = f"Recomendaciones no válidas tras reintento: {e}"
+                break
+            if rec_required:
+                if json_retries < 1 and tb.corpus:
+                    json_retries += 1
+                    history += [turn.content, be.user_content(
+                        "Para esta solicitud debés responder exclusivamente enviando las recomendaciones con la "
+                        "herramienta submit_recommendations (array JSON con sucursal_id, motivo, evidencia y accion_sugerida), sin texto narrativo.")]
+                    continue
+                error = ("Se solicitó una recomendación de sucursales, pero no se obtuvo un array JSON válido "
+                         "(el modelo respondió con texto narrativo o sin evidencia consultada).")
                 break
             answer = text
             break

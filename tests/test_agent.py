@@ -359,7 +359,7 @@ def test_recomendaciones_sin_consultar_datos_se_rechazan(hacer_agente):
     a = hacer_agente([Turn(calls=[ToolCall("submit_recommendations", {"recomendaciones": rec})], content={}),
                       Turn(text="No puedo recomendar sin datos.", content={})])
     res = a.ask("¿Qué sucursales debería visitar?")
-    assert res.kind == "text" and res.metrics["tool_errors"] == 1
+    assert res.kind == "error" and res.metrics["tool_errors"] == 1
 
 
 def test_json_en_texto_se_valida_y_normaliza(hacer_agente):

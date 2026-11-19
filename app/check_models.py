@@ -7,6 +7,10 @@ Uso:
 
 Verifica ÚNICAMENTE los modelos configurados para el proveedor activo (principal + fallbacks)
 con una solicitud mínima que incluye una declaración de función de prueba.
+
+Alcance: confirma accesibilidad del endpoint, ausencia de error y aceptación del esquema de
+herramientas; la ejecución completa de un ciclo de function calling se verifica end-to-end
+con ``python -m app.agent``.
 """
 from __future__ import annotations
 
@@ -18,6 +22,18 @@ from typing import Any
 
 from app.config import DEFAULT_OPENROUTER_BASE_URL, Config, ConfigError, load_config
 from app.llm import classify_error
+
+PROBE_MAX_TOKENS = 128
+
+
+def _classify_probe_response(has_content: bool, has_tool_calls: bool, finish_reason: str | None) -> tuple[bool, str, str | None, str | None]:
+    """Diferencia respuesta válida, truncada/inconclusa y respuesta vacía."""
+    if has_content or has_tool_calls:
+        return True, "ok", None, None
+    fr = (finish_reason or "").lower()
+    if "length" in fr or "max_tokens" in fr:
+        return False, "inconcluso", "truncated", f"Respuesta truncada antes de emitir texto útil (finish_reason={finish_reason})."
+    return False, "respuesta_vacia", "empty_response", f"El modelo respondió sin contenido ni tool calls (finish_reason={finish_reason})."
 
 
 def _check_openrouter(config: Config, client: Any = None) -> list[dict]:
@@ -48,23 +64,31 @@ def _check_openrouter(config: Config, client: Any = None) -> list[dict]:
                 messages=[{"role": "user", "content": "Respondé únicamente: ok"}],
                 tools=probe_tools,
                 temperature=0.0,
-                max_tokens=16,
+                max_tokens=PROBE_MAX_TOKENS,
             )
             lat = round(time.perf_counter() - t0, 3)
             choices = getattr(resp, "choices", None) or []
-            msg = choices[0].message if choices else None
-            ok = msg is not None and bool((getattr(msg, "content", None) or "").strip() or getattr(msg, "tool_calls", None))
+            choice = choices[0] if choices else None
+            msg = choice.message if choice else None
+            has_txt = bool((getattr(msg, "content", None) or "").strip()) if msg else False
+            has_tc = bool(getattr(msg, "tool_calls", None)) if msg else False
+            fr = str(getattr(choice, "finish_reason", None)) if choice and getattr(choice, "finish_reason", None) else None
+            ok, status, err_cat, err_msg = _classify_probe_response(has_txt, has_tc, fr)
             resultados.append({
                 "provider": "openrouter",
                 "rol": rol,
                 "model": getattr(resp, "model", None) or model,
                 "ok": ok,
+                "status": status,
                 "latency_s": lat,
-                "function_calling_ok": ok,
+                "tools_accepted": True,
+                "tool_call_verified": has_tc,
+                "function_calling_ok": ok,  # compatibilidad con callers previos
+                "finish_reason": fr,
                 "supported_actions": ["chat.completions", "tools"],
-                "error_code": None if ok else "empty",
-                "error_category": None if ok else "empty_response",
-                "error_message": None if ok else "Respuesta vacía del modelo.",
+                "error_code": None if ok else status,
+                "error_category": err_cat,
+                "error_message": err_msg,
             })
         except Exception as e:  # noqa: BLE001
             lat = round(time.perf_counter() - t0, 3)
@@ -74,8 +98,12 @@ def _check_openrouter(config: Config, client: Any = None) -> list[dict]:
                 "rol": rol,
                 "model": model,
                 "ok": False,
+                "status": "modelo_inaccesible",
                 "latency_s": lat,
+                "tools_accepted": False,
+                "tool_call_verified": False,
                 "function_calling_ok": False,
+                "finish_reason": None,
                 "supported_actions": None,
                 "error_code": info.code,
                 "error_category": info.category,
@@ -106,7 +134,7 @@ def _check_gemini(config: Config, client: Any = None) -> list[dict]:
         tools=[probe_tool],
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         temperature=0.0,
-        max_output_tokens=16,
+        max_output_tokens=PROBE_MAX_TOKENS,
     )
 
     resultados: list[dict] = []
@@ -129,18 +157,24 @@ def _check_gemini(config: Config, client: Any = None) -> list[dict]:
             lat = round(time.perf_counter() - t0, 3)
             cand = resp.candidates[0] if getattr(resp, "candidates", None) else None
             txt = (getattr(resp, "text", None) or "").strip()
-            ok = cand is not None and bool(txt or getattr(resp, "function_calls", None))
+            has_tc = bool(getattr(resp, "function_calls", None))
+            fr = str(getattr(cand, "finish_reason", None)) if cand and getattr(cand, "finish_reason", None) else None
+            ok, status, err_cat, err_msg = _classify_probe_response(bool(txt), has_tc, fr)
             resultados.append({
                 "provider": "gemini",
                 "rol": rol,
                 "model": model,
                 "ok": ok,
+                "status": status,
                 "latency_s": lat,
+                "tools_accepted": True,
+                "tool_call_verified": has_tc,
                 "function_calling_ok": ok,
+                "finish_reason": fr,
                 "supported_actions": actions,
-                "error_code": None if ok else "empty",
-                "error_category": None if ok else "empty_response",
-                "error_message": None if ok else "Respuesta vacía del modelo.",
+                "error_code": None if ok else status,
+                "error_category": err_cat,
+                "error_message": err_msg,
             })
         except Exception as e:  # noqa: BLE001
             lat = round(time.perf_counter() - t0, 3)
@@ -150,8 +184,12 @@ def _check_gemini(config: Config, client: Any = None) -> list[dict]:
                 "rol": rol,
                 "model": model,
                 "ok": False,
+                "status": "modelo_inaccesible",
                 "latency_s": lat,
+                "tools_accepted": False,
+                "tool_call_verified": False,
                 "function_calling_ok": False,
+                "finish_reason": None,
                 "supported_actions": actions,
                 "error_code": info.code,
                 "error_category": info.category,
@@ -192,9 +230,11 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(resultados, ensure_ascii=False, indent=2))
     else:
         for r in resultados:
-            estado = "OK" if r["ok"] else f"ERROR [{r['error_category']} / {r['error_code']}]"
-            fc = "sí" if r["function_calling_ok"] else "no"
-            print(f"[{r['provider']}:{r['rol']}] {r['model']}: {estado} | latencia={r['latency_s']}s | function_calling={fc}")
+            estado = "OK" if r["ok"] else f"{r['status'].upper()} [{r['error_category']} / {r['error_code']}]"
+            tools_txt = "esquema_aceptado" if r["tools_accepted"] else "no"
+            if r["tool_call_verified"]:
+                tools_txt += "+call_ok"
+            print(f"[{r['provider']}:{r['rol']}] {r['model']}: {estado} | latencia={r['latency_s']}s | tools={tools_txt}")
             if r["error_message"]:
                 print(f"  detalle: {r['error_message']}")
     return 0 if any(r["ok"] for r in resultados) else 1

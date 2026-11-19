@@ -92,7 +92,101 @@ def open_readonly(db_path: Path | str | None = None) -> duckdb.DuckDBPyConnectio
 
 
 # --------------------------------------------------------------------- validación de recomendaciones
-def validate_recommendations(items: Any, valid_ids: set[str], corpus: str | None = None) -> tuple[list[dict], list[str]]:
+def _extract_branch_evidence(evidence_records: list[dict], sid: str) -> tuple[list[float], dict[str, list[float]]]:
+    """Extrae cifras y métricas clave asociadas a ``sid`` desde los resultados de herramientas."""
+    nums: list[float] = []
+    metrics: dict[str, list[float]] = {"quejas": [], "pedidos": [], "tasa": [], "dias": []}
+
+    def _add_metric(col: str, val: Any) -> None:
+        if not isinstance(val, (int, float)) or isinstance(val, bool):
+            return
+        c = col.lower()
+        if c in ("quejas", "total_quejas", "quejas_en_dias_con_pedidos_validos"):
+            metrics["quejas"].append(float(val))
+        elif c in ("pedidos", "pedidos_validos"):
+            metrics["pedidos"].append(float(val))
+        elif "tasa" in c:
+            metrics["tasa"].append(float(val))
+        elif c in ("dias_operativos", "dias_con_pedidos_validos"):
+            metrics["dias"].append(float(val))
+
+    for rec in evidence_records:
+        if "columns" in rec and "rows" in rec:
+            cols = rec["columns"]
+            sid_idx = next((idx for idx, c in enumerate(cols) if c.lower() == "sucursal_id"), None)
+            for row in rec["rows"]:
+                if sid_idx is not None and str(row[sid_idx]).strip().upper() != sid:
+                    continue
+                if sid_idx is None and not any(str(v).strip().upper() == sid for v in row):
+                    continue
+                for col, val in zip(cols, row):
+                    if isinstance(val, (int, float)) and not isinstance(val, bool):
+                        nums.append(float(val))
+                        _add_metric(col, val)
+        elif rec.get("sucursal_id") == sid or (isinstance(rec.get("sucursal"), dict) and rec["sucursal"].get("sucursal_id") == sid):
+            # get_branch_summary o get_complaint_comments
+            for src in (rec, rec.get("sucursal") or {}):
+                if isinstance(src, dict):
+                    for k, v in src.items():
+                        if isinstance(v, (int, float)) and not isinstance(v, bool):
+                            nums.append(float(v))
+                            _add_metric(k, v)
+            for lista_k in ("por_categoria", "quejas_por_categoria", "semanas"):
+                for item in rec.get(lista_k) or []:
+                    if isinstance(item, dict):
+                        for k, v in item.items():
+                            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                                nums.append(float(v))
+                                _add_metric(k, v)
+    return nums, metrics
+
+
+def _check_contradictions(sid: str, evidencia: str, metrics: dict[str, list[float]]) -> None:
+    """Detecta contradicciones demostrables entre métricas consultadas de ``sid`` y ``evidencia``."""
+    checks = [
+        ("quejas", r"(\d[\d.,]*)\s+quejas?\b", 0.5),
+        ("pedidos", r"(\d[\d.,]*)\s+pedidos(?:\s+validos|\s+válidos)?\b", 0.5),
+        ("tasa", r"\btasa(?:\s+de\s+quejas)?(?:\s+semanal)?\s*(?:de|:|=)?\s*(\d[\d.,]*)", 0.06),
+        ("dias", r"(\d[\d.,]*)\s+d[ií]as\s+operativos\b", 0.5),
+    ]
+    for mkey, pat, tol in checks:
+        vals = metrics.get(mkey) or []
+        if not vals:
+            continue
+        for m in re.finditer(pat, evidencia, flags=re.IGNORECASE):
+            # Ignorar escalas tipo "por 1.000 pedidos" o "cada 1,000 pedidos"
+            prefix = evidencia[max(0, m.start() - 12):m.start()].lower()
+            if mkey == "pedidos" and any(w in prefix for w in ("cada ", "por ")):
+                continue
+            parsed = _numeros(m.group(1))
+            if not parsed:
+                continue
+            claimed = parsed[0]
+            if not any(abs(v - claimed) <= tol for v in vals):
+                raise RecommendationError(
+                    f"{sid}: evidencia contradictoria para {mkey} (afirma {claimed}, consultado {vals})."
+                )
+
+
+def _respaldado_ext(n: float, corpus_nums: list[float], is_percent: bool = False) -> bool:
+    if _respaldado(n, corpus_nums):
+        return True
+    # Cálculos derivados sencillos: porcentajes (100 * a / b) y tasas por 1.000 (1000 * a / b)
+    for b in corpus_nums:
+        if b <= 0:
+            continue
+        for a in corpus_nums:
+            if a < 0:
+                continue
+            if is_percent and a <= b and abs((100.0 * a / b) - n) <= 0.15:
+                return True
+            if not is_percent and abs((1000.0 * a / b) - n) <= 0.06:
+                return True
+    return False
+
+
+def validate_recommendations(items: Any, valid_ids: set[str], corpus: str | None = None,
+                             evidence_records: list[dict] | None = None) -> tuple[list[dict], list[str]]:
     """Valida estructura y contenido. Devuelve (lista limpia, advertencias). Lanza RecommendationError."""
     if not isinstance(items, list) or not items:
         raise RecommendationError("Debe ser un array JSON no vacío.")
@@ -115,9 +209,19 @@ def validate_recommendations(items: Any, valid_ids: set[str], corpus: str | None
         if corpus is not None and sid not in corpus:
             raise RecommendationError(
                 f"Elemento {i}: no hay datos consultados de '{sid}'. Consultá la evidencia con SQL antes de recomendarla.")
-        faltan = [n for n in _numeros(it["evidencia"]) if not _respaldado(n, corpus_nums)]
-        if corpus is not None and faltan:
-            warnings.append(f"{sid}: cifras de la evidencia no halladas literalmente en las consultas: {faltan[:6]}")
+
+        evidencia = it["evidencia"].strip()
+        branch_nums, branch_metrics = ([], {})
+        if evidence_records:
+            branch_nums, branch_metrics = _extract_branch_evidence(evidence_records, sid)
+            _check_contradictions(sid, evidencia, branch_metrics)
+
+        ref_nums = branch_nums if branch_nums else corpus_nums
+        if corpus is not None or evidence_records is not None:
+            pct_vals = {float(v) for m in re.finditer(r"(\d[\d.,]*)\s*%", evidencia) for v in _numeros(m.group(1))}
+            faltan = [n for n in _numeros(evidencia) if not _respaldado_ext(n, ref_nums, is_percent=(n in pct_vals))]
+            if faltan:
+                warnings.append(f"{sid}: evidencia no verificable en las consultas de esta sucursal: {faltan[:6]}")
         limpio.append({k: it[k].strip() for k in REC_KEYS})
     return limpio, warnings
 
@@ -181,6 +285,7 @@ class ToolBox:
         self.calls = 0
         self.errors = 0
         self.corpus = ""
+        self.evidence_records: list[dict] = []
         self.final_recommendations: list[dict] | None = None
         self.warnings: list[str] = []
 
@@ -209,6 +314,7 @@ class ToolBox:
             self.errors += 1
         elif name != "submit_recommendations":
             self.corpus += json.dumps(result, ensure_ascii=False, default=str)[:60000]
+            self.evidence_records.append(result)
         return result
 
     # ---- esquema
@@ -314,7 +420,7 @@ class ToolBox:
     # ---- recomendaciones (salida estructurada validada)
     def submit_recommendations(self, items: Any) -> dict:
         try:
-            clean, warnings = validate_recommendations(items, self._valid_ids, self.corpus)
+            clean, warnings = validate_recommendations(items, self._valid_ids, self.corpus, self.evidence_records)
         except RecommendationError as e:
             return {"ok": False, "error": f"Recomendaciones inválidas: {e}"}
         self.final_recommendations, self.warnings = clean, warnings

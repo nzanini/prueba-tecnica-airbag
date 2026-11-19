@@ -83,3 +83,13 @@ Las reglas no incluyen respuestas de `eval/preguntas_ejemplo.jsonl`; esas respue
 | O2 | `OpenRouterBackend` con el SDK oficial `openai` (`max_retries=0`, `timeout=12 s`) sobre `https://openrouter.ai/api/v1` y modelo por defecto `google/gemini-3.8-flash` | OpenRouter implementa su propio enrutamiento; desactivar reintentos internos del SDK mantiene la misma política de control de tiempos y observabilidad que en `GeminiBackend`. |
 | O3 | Clasificación de errores compartida (`classify_error`) incluyendo `402` (créditos/límite de gasto en OpenRouter) y sanitización de claves `sk-or-v1-...` | Falla de forma clara ante límites de gasto o claves vencidas sin reintentar ciegamente ni filtrar secretos. |
 | O4 | Registro de `provider`, `resp.model` real devuelto por OpenRouter, `prompt_tokens`/`completion_tokens` y `attempts` en `AgentResult` y `eval/run.py` | Mantiene trazabilidad completa de modelo, tokens, errores y costos (marcando costo como desconocido si no hay tarifa verificada en `eval/pricing.json` o hubo fallos parciales). |
+
+## Ajustes de robustez y reproducibilidad (Fase 4B)
+
+| # | Decisión | Razón |
+|---|---|---|
+| R1 | Detector `is_recommendation_request()` en `app/agent.py` sin LLM extra | Exige array JSON vía `submit_recommendations` cuando se pide recomendar/visitar sucursales, rechazando respuestas narrativas tras un reintento. |
+| R2 | Verificación de evidencia por `sucursal_id`, porcentajes/tasas derivados y detección de contradicciones en `app/tools.py` | Evita que números de otras sucursales respalden una recomendación, acepta `100*a/b` y `1000*a/b` verificables y bloquea contradicciones demostrables (`quejas`, `pedidos`, `tasa`, `dias`). Limitación: no valida relaciones estadísticas complejas ni redacción libre fuera de esos patrones. |
+| R3 | `PROBE_MAX_TOKENS = 128` y estados `ok`, `inconcluso`, `respuesta_vacia`, `modelo_inaccesible` en `app/check_models.py` | Evita falsos `empty_response` en modelos con tokens de razonamiento y distingue aceptación del esquema de herramientas (`tools_accepted`) de la verificación end-to-end (`python -m app.agent`). |
+| R4 | Conjunto separado `eval/preguntas_robustez.jsonl` + `eval/robustness_criteria.json` (con `allowed_numbers`) | Separa la evaluación de abstención (R01–R07) del accuracy analítico (P01–P18) y rechaza respuestas que dicen "no hay datos" pero inventan cifras. |
+| R5 | Versiones fijadas en `requirements.txt` | Garantiza instalación reproducible desde un entorno limpio. |

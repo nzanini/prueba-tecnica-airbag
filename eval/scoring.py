@@ -138,14 +138,14 @@ def _is_negated(norm_ans: str, start: int) -> bool:
     return bool(re.search(r"(?:^|\b)(?:no|sin|ni|tampoco|nunca|jamas)(?:\s+\w+){0,3}\s*$", prefix))
 
 
-def _matches_option(norm_ans: str, opt: Any) -> bool:
+def _matches_option(norm_ans: str, opt: Any, check_negation: bool = True) -> bool:
     """Coincidencia por término completo o regla estructurada (percent_approx / ratio), evitando negaciones."""
     if isinstance(opt, dict):
         if "percent_approx" in opt:
             target = float(opt["percent_approx"])
             tol = float(opt.get("tolerance", 1.0))
             for m in re.finditer(r"(\d+(?:[.,]\d+)?)\s*%", norm_ans):
-                if _is_negated(norm_ans, m.start()):
+                if check_negation and _is_negated(norm_ans, m.start()):
                     continue
                 val = _parse_number_token(m.group(1))
                 if val is not None and abs(val - target) <= tol + 1e-9:
@@ -154,7 +154,7 @@ def _matches_option(norm_ans: str, opt: Any) -> bool:
         if "ratio" in opt and len(opt["ratio"]) == 2:
             num, den = int(opt["ratio"][0]), int(opt["ratio"][1])
             for m in re.finditer(rf"\b{num}\s*(?:de|/)\s*{den}\b", norm_ans):
-                if not _is_negated(norm_ans, m.start()):
+                if not check_negation or not _is_negated(norm_ans, m.start()):
                     return True
             return False
         return False
@@ -165,7 +165,7 @@ def _matches_option(norm_ans: str, opt: Any) -> bool:
     pat = rf"(?<!\w){re.escape(norm_term)}(?!\w)"
     starts_neg = norm_term.startswith(("no ", "sin ", "ni ", "impide "))
     for m in re.finditer(pat, norm_ans):
-        if starts_neg or not _is_negated(norm_ans, m.start()):
+        if starts_neg or not check_negation or not _is_negated(norm_ans, m.start()):
             return True
     return False
 
@@ -225,18 +225,28 @@ def evaluate_item(item: dict, answer_text: str, criteria_map: dict[str, dict] | 
         crit = (criteria_map or {}).get(item["id"])
         if crit:
             missing_groups = []
+            check_neg = bool(crit.get("check_negation", True))
             for idx, group in enumerate(crit.get("required_any", [])):
-                if not any(_matches_option(norm_ans, opt) for opt in group):
+                if not any(_matches_option(norm_ans, opt, check_negation=check_neg) for opt in group):
                     label = group[0] if isinstance(group[0], str) else json.dumps(group[0])
                     missing_groups.append(f"grupo_{idx + 1}({label})")
             forbidden = [f for f in crit.get("forbidden_any", []) if _matches_term(norm_ans, f)]
-            if not missing_groups and not forbidden:
+            invented_nums = []
+            if "allowed_numbers" in crit:
+                allowed = {float(x) for x in crit["allowed_numbers"]}
+                cleaned_ans = _strip_unit_and_date_noise(answer_text)
+                for val in _numbers_in(cleaned_ans):
+                    if val not in allowed:
+                        invented_nums.append(val)
+            if not missing_groups and not forbidden and not invented_nums:
                 return {"estado": "correct", "valor_extraido": answer_text.strip(), "motivo": ""}
             mot = []
             if missing_groups:
                 mot.append(f"faltan conceptos: {', '.join(missing_groups)}")
             if forbidden:
                 mot.append(f"términos prohibidos: {', '.join(forbidden)}")
+            if invented_nums:
+                mot.append(f"cifras no permitidas en abstención: {invented_nums[:5]}")
             return {"estado": "incorrect", "valor_extraido": answer_text.strip(), "motivo": "; ".join(mot)}
         norm_esp = normalize_text(str(esp))
         if len(norm_esp.split()) <= 3:
