@@ -41,23 +41,22 @@
     "required_any": [
       ["3.49", "3,49"],
       ["2.15", "2,15"],
-      ["sesgo", "diferencia previa", "ya tenian"],
+      ["sesgo", "sesgo de seleccion", "diferencia previa", "ya tenian", "rendimiento previo", "tasa basal"],
       [
-        "no demuestra causalidad",
-        "no prueba causalidad",
-        "no implica causalidad",
-        "impide atribuir causalidad",
-        "no se puede concluir causalidad",
-        "no puede atribuirse causalidad",
-        "no permite afirmar causalidad",
-        "no es causal",
-        "no demuestra que la capacitacion",
-        "no prueba que la capacitacion"
+        {
+          "regex": "\\b(?:no|ni|impide|imposibilita)\\b[^.\\n]{0,55}\\b(?:demuestra|prueba|implica|atribuir|atribuirse|aislar|establecer|concluir|afirmar|determinar|deducir|probar)\\b[^.\\n]{0,55}\\b(?:causal\\w*|efecto|impacto|causa)\\b|\\bno\\s+es\\s+causal\\b"
+        }
       ]
+    ],
+    "value_bindings": [
+      {"entity_any": ["por_desempeno", "por desempeno", "desempeno"], "number": 3.49, "tolerance": 0.02},
+      {"entity_any": ["aleatorio", "aleatoria", "aleatoriamente", "aleatorias", "aleatorios"], "number": 2.15, "tolerance": 0.02}
     ],
     "forbidden_any": [
       "demuestra causalidad",
       "prueba causalidad",
+      "causo la reduccion",
+      "demuestra que la capacitacion",
       "no hay sesgo",
       "sin sesgo"
     ]

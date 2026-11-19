@@ -37,9 +37,8 @@ def _parse_number_token(tok: str) -> float | None:
 
 
 def _strip_unit_and_date_noise(text: str) -> str:
-    """Elimina fechas ISO y escalas explícitas ('por cada 1,000') para evitar falsos candidatos."""
-    t = re.sub(r"\b\d{4}-\d{2}-\d{2}\b", " ", text)
-    t = re.sub(r"\b(?:por\s+cada|por|cada)\s+1[.,]000\b", " ", t, flags=re.IGNORECASE)
+    """Elimina fechas (ISO, DD/MM/YYYY, español) y escalas ('por cada 1,000') para evitar falsos candidatos."""
+    t = _strip_dates_and_scales(text)
     t = re.sub(r"\b(?:de|en|del)\s+20\d{2}\b", " ", t, flags=re.IGNORECASE)
     return t
 
@@ -142,6 +141,8 @@ def _is_negated(norm_ans: str, start: int) -> bool:
 def _matches_option(norm_ans: str, opt: Any, check_negation: bool = True) -> bool:
     """Coincidencia por término completo o regla estructurada (percent_approx / ratio), evitando negaciones."""
     if isinstance(opt, dict):
+        if "regex" in opt:
+            return bool(re.search(opt["regex"], norm_ans))
         if "percent_approx" in opt:
             target = float(opt["percent_approx"])
             tol = float(opt.get("tolerance", 1.0))
@@ -169,6 +170,58 @@ def _matches_option(norm_ans: str, opt: Any, check_negation: bool = True) -> boo
         if starts_neg or not check_negation or not _is_negated(norm_ans, m.start()):
             return True
     return False
+
+
+def _check_value_bindings(norm_ans: str, bindings: list[dict]) -> list[str]:
+    """Verifica que cada entidad tenga asociado su valor numérico esperado (evita valores intercambiados)."""
+    if not bindings:
+        return []
+    clauses = [
+        c.strip() for c in re.split(
+            r"(?<!\d)\.(?!\d)|[;\n]|(?:\bfrente a\b|\bversus\b|\bvs\.?\b|\bmientras que\b|\bcontra\b)",
+            norm_ans,
+        ) if c.strip()
+    ]
+    errors: list[str] = []
+    for b in bindings:
+        entities = [normalize_text(e) for e in b["entity_any"]]
+        expected = float(b["number"])
+        tol = float(b.get("tolerance", 0.02))
+        matched_clause = False
+        wrong_vals: list[float] = []
+        for cl in clauses:
+            ent_pos = [m.start() for e in entities for m in re.finditer(rf"(?<!\w){re.escape(e)}(?!\w)", cl)]
+            if not ent_pos:
+                continue
+            cl_nums = _numbers_in(_strip_unit_and_date_noise(cl))
+            # Si la cláusula tiene números y solo aparece esta entidad (o cada número se asocia al más cercano)
+            other_entities = [
+                normalize_text(oe) for ob in bindings if ob is not b for oe in ob["entity_any"]
+            ]
+            other_pos = [m.start() for oe in other_entities for m in re.finditer(rf"(?<!\w){re.escape(oe)}(?!\w)", cl)]
+            if not other_pos:
+                if any(abs(v - expected) <= tol + 1e-9 for v in cl_nums):
+                    matched_clause = True
+                elif cl_nums:
+                    wrong_vals.extend(cl_nums)
+            else:
+                # Cláusula con dos entidades: asociar cada número al término de entidad más cercano
+                cl_clean = _strip_unit_and_date_noise(cl)
+                for m in re.finditer(r"(?<![A-Za-z0-9_])(-?\d[\d.,]*)(?![A-Za-z0-9_])", cl_clean):
+                    v = _parse_number_token(m.group(1))
+                    if v is None:
+                        continue
+                    d_self = min(abs(m.start() - p) for p in ent_pos)
+                    d_other = min(abs(m.start() - p) for p in other_pos)
+                    if d_self < d_other:
+                        if abs(v - expected) <= tol + 1e-9:
+                            matched_clause = True
+                        else:
+                            wrong_vals.append(v)
+        if not matched_clause:
+            detail = f" (encontrado {wrong_vals[0]})" if wrong_vals else ""
+            errors.append(f"{entities[0]}->{expected}{detail}")
+    return errors
 
 
 def _matches_term(norm_ans: str, term: str) -> bool:
@@ -232,6 +285,7 @@ def evaluate_item(item: dict, answer_text: str, criteria_map: dict[str, dict] | 
                     label = group[0] if isinstance(group[0], str) else json.dumps(group[0])
                     missing_groups.append(f"grupo_{idx + 1}({label})")
             forbidden = [f for f in crit.get("forbidden_any", []) if _matches_term(norm_ans, f)]
+            binding_errs = _check_value_bindings(norm_ans, crit.get("value_bindings", []))
             invented_nums = []
             if "allowed_numbers" in crit:
                 allowed = {float(x) for x in crit["allowed_numbers"]}
@@ -251,11 +305,13 @@ def evaluate_item(item: dict, answer_text: str, criteria_map: dict[str, dict] | 
                         if has_req and not has_forb:
                             continue
                     invented_nums.append(val)
-            if not missing_groups and not forbidden and not invented_nums:
+            if not missing_groups and not forbidden and not invented_nums and not binding_errs:
                 return {"estado": "correct", "valor_extraido": answer_text.strip(), "motivo": ""}
             mot = []
             if missing_groups:
                 mot.append(f"faltan conceptos: {', '.join(missing_groups)}")
+            if binding_errs:
+                mot.append(f"relación entidad-cifra incorrecta: {', '.join(binding_errs)}")
             if forbidden:
                 mot.append(f"términos prohibidos: {', '.join(forbidden)}")
             if invented_nums:

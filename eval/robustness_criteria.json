@@ -40,6 +40,7 @@
       ],
       [
         "2026-03-29",
+        "29/03/2026",
         "29 de marzo",
         "marzo de 2026",
         "enero a marzo"
@@ -153,13 +154,9 @@
     "description": "Causalidad en capacitaciones: debe negar causalidad y mencionar sesgo de selección / diferencias previas.",
     "required_any": [
       [
-        "no se puede demostrar",
-        "no quedo demostrado",
-        "no demuestra causalidad",
-        "no prueba causalidad",
-        "no permite afirmar causalidad",
-        "no implica causalidad",
-        "no se puede concluir causalidad"
+        {
+          "regex": "\\b(?:no|ni|impide|imposibilita)\\b[^.\\n]{0,55}\\b(?:demuestra|demostrado|prueba|probar|implica|atribuir|atribuirse|aislar|establecer|concluir|afirmar|determinar|deducir)\\b[^.\\n]{0,55}\\b(?:causal\\w*|efecto|impacto|causa)\\b|\\bno\\s+quedo\\s+demostrado\\b|\\bno\\s+es\\s+causal\\b"
+        }
       ],
       [
         "sesgo",

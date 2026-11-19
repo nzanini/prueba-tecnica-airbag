@@ -111,9 +111,54 @@ def test_evaluacion_textual_p10_y_p16():
     assert evaluate_item(p10, "El 81.67% de las quejas son de limpieza y baños en mal estado.", CRITERIA)["estado"] == "incorrect"
 
     p16 = {"id": "P16", "tipo": "texto", "respuesta_esperada": "...", "tolerancia": None}
+    # Negativo: incompleta (tiene ambas tasas pero falta sesgo y no-causalidad)
     assert evaluate_item(p16, "La tasa fue 3.49 y 2.15.", CRITERIA)["estado"] == "incorrect"
-    buena_p16 = "Tenían 3,49 frente a 2,15 por sesgo de selección, por lo que no demuestra causalidad."
+    # Negativo: tiene tasas y sesgo pero falta explicar la no-causalidad
+    assert evaluate_item(p16, "3.49 en por_desempeno y 2.15 en aleatorio; existe sesgo de selección.", CRITERIA)["estado"] == "incorrect"
+    # Positivo: formulación clásica
+    buena_p16 = "En por_desempeno tenían 3,49 frente a 2,15 en aleatorio por sesgo de selección, por lo que no demuestra causalidad."
     assert evaluate_item(p16, buena_p16, CRITERIA)["estado"] == "correct"
+    # Positivo: respuesta real de real_propias_v3 ("no permite aislar el impacto causal")
+    real_p16_v3 = (
+        "3.49 quejas por cada 1.000 pedidos en las asignadas por desempeño frente a 2.15 en las asignadas aleatoriamente.\n\n"
+        "Esta diferencia previa evidencia un sesgo de selección: las sucursales elegidas por desempeño ya tenían "
+        "una tasa basal más alta antes de la intervención, por lo que una simple comparación antes/después "
+        "no permite aislar el impacto causal de la capacitación."
+    )
+    assert evaluate_item(p16, real_p16_v3, CRITERIA)["estado"] == "correct"
+    # Positivo: orden invertido de entidades manteniendo cada tasa con su grupo correcto
+    parafrasis = (
+        "Las sucursales asignadas aleatoriamente registraron 2,15 mientras que las elegidas por desempeño "
+        "presentaron 3,49; esa diferencia previa implica sesgo de selección e impide atribuir un efecto causal."
+    )
+    assert evaluate_item(p16, parafrasis, CRITERIA)["estado"] == "correct"
+    # Negativo: tasas intercambiadas entre grupos (mismas cifras y palabras clave, relación falsa)
+    intercambiada = (
+        "3.49 quejas por cada 1.000 pedidos en las asignadas aleatoriamente frente a 2.15 en las asignadas "
+        "por desempeño; esto evidencia sesgo de selección y no demuestra causalidad."
+    )
+    res_inter = evaluate_item(p16, intercambiada, CRITERIA)
+    assert res_inter["estado"] == "incorrect" and "relación entidad-cifra" in res_inter["motivo"]
+    # Negativo: tasa incorrecta
+    assert evaluate_item(p16, "3.90 en por desempeño y 2.15 en aleatoria; sesgo y no demuestra causalidad.", CRITERIA)["estado"] == "incorrect"
+    # Negativo: afirmación causal injustificada y negación del sesgo
+    assert evaluate_item(p16, "3.49 por desempeño y 2.15 aleatoria; no hay sesgo y demuestra causalidad.", CRITERIA)["estado"] == "incorrect"
+
+
+def test_adversarial_fechas_vagas_y_decimales_espanoles():
+    # Decimal español + contexto numérico en segunda línea -> extrae 2.15 sin ambigüedad
+    p03 = {"id": "P03", "tipo": "numero", "respuesta_esperada": 2.15, "tolerancia": 0.01}
+    assert evaluate_item(p03, "2,15 quejas por cada 1.000 pedidos.\nFueron 2025 quejas en 943258 pedidos.")["estado"] == "correct"
+
+    # Respuesta vaga con palabras clave en P10 sin magnitud -> incorrect
+    p10 = {"id": "P10", "tipo": "texto", "respuesta_esperada": "...", "tolerancia": None}
+    assert evaluate_item(p10, "Se quejan de limpieza, baños y basura.", CRITERIA)["estado"] == "incorrect"
+
+    # Fechas en DD/MM/YYYY y en español no cuentan como cifras inventadas en R02
+    rob_crit = eval_run.load_json(eval_run.DEFAULT_ROBUSTNESS_CRITERIA)
+    r02 = {"id": "R02", "tipo": "texto", "respuesta_esperada": "...", "tolerancia": None}
+    assert evaluate_item(r02, "No hay datos para abril de 2026; el período abarca del 05/01/2026 al 29/03/2026.", rob_crit)["estado"] == "correct"
+    assert evaluate_item(r02, "No hay datos para abril de 2026 (solo hasta el 29 de marzo); tuvo 1200 pedidos.", rob_crit)["estado"] == "incorrect"
 
 
 def test_negaciones_y_subcadenas_no_dan_falso_positivo():
