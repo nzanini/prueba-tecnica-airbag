@@ -273,7 +273,7 @@ def evaluate_item(item: dict, answer_text: str, criteria_map: dict[str, dict] | 
 
 def evaluate_recommendations_json(answer_text: str, db_con: Any, corpus: str | None = None) -> dict:
     """Evalúa formato y criterios analíticos básicos de una respuesta JSON de recomendaciones."""
-    raw = (answer_text or "").strip()
+    raw = (answer_text or "").lstrip("\ufeff").strip()
     if raw.startswith("```") or not raw.startswith("["):
         return {"format_ok": False, "quality_ok": False, "count": 0,
                 "errors": ["La salida no es exclusivamente un array JSON sin texto/Markdown."], "warnings": []}

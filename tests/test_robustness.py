@@ -116,6 +116,47 @@ def test_evidencia_asociada_por_sucursal_y_porcentajes_derivados():
     assert "contradictoria" in str(e.value)
 
 
+def test_validador_distingue_tasas_fechas_porcentajes_y_contradicciones():
+    ev_records = [
+        {"columns": ["sucursal_id", "quejas", "pedidos_validos", "dias_operativos"],
+         "rows": [["S014", 12, 2152, 7]]},
+        {"sucursal_id": "S014", "total_quejas": 12, "por_categoria": [{"categoria": "demora", "quejas": 6}]},
+    ]
+    corpus = json.dumps(ev_records)
+
+    # Tasa derivada (12 / 2152 * 1000 = 5.58) + fecha 2026-03-23 + porcentaje derivado (6/12 = 50%)
+    ok = [{"sucursal_id": "S014", "motivo": "Tasa alta",
+           "evidencia": "Semana del 2026-03-23: tasa de 5.58 quejas por cada 1.000 pedidos (12 quejas en 2152 pedidos, 7 días operativos; 50% por demora).",
+           "accion_sugerida": "Auditar tiempos"}]
+    clean, warns = validate_recommendations(ok, {"S014"}, corpus, ev_records)
+    assert len(clean) == 1 and warns == []
+
+    # Contradicción en tasa derivada (afirma 9.50 cuando es 5.58) -> rechaza
+    bad_tasa = [{"sucursal_id": "S014", "motivo": "m",
+                 "evidencia": "9.50 quejas por cada 1.000 pedidos en 7 días operativos", "accion_sugerida": "a"}]
+    with pytest.raises(RecommendationError) as e1:
+        validate_recommendations(bad_tasa, {"S014"}, corpus, ev_records)
+    assert "contradictoria para tasa" in str(e1.value)
+
+    # Contradicción en días operativos -> rechaza
+    bad_dias = [{"sucursal_id": "S014", "motivo": "m",
+                 "evidencia": "12 quejas en 30 días operativos", "accion_sugerida": "a"}]
+    with pytest.raises(RecommendationError) as e2:
+        validate_recommendations(bad_dias, {"S014"}, corpus, ev_records)
+    assert "contradictoria para dias" in str(e2.value)
+
+    # Cifra inventada no vinculada a métrica conocida -> warning de no verificable
+    inv = [{"sucursal_id": "S014", "motivo": "m",
+            "evidencia": "12 quejas y puntaje interno de 777", "accion_sugerida": "a"}]
+    _, warns_inv = validate_recommendations(inv, {"S014"}, corpus, ev_records)
+    assert warns_inv and "777.0" in warns_inv[0]
+
+    # Evidencia inexistente (sucursal no consultada) -> error
+    with pytest.raises(RecommendationError):
+        validate_recommendations([{"sucursal_id": "S056", "motivo": "m", "evidencia": "10 quejas", "accion_sugerida": "a"}],
+                                 {"S014", "S056"}, corpus, ev_records)
+
+
 # ------------------------------------------------ 3. Diagnóstico check_models.py
 def test_check_models_diferencia_ok_inconcluso_vacia_e_inaccesible():
     def _or_fake(content, finish_reason="stop", tool_calls=None):

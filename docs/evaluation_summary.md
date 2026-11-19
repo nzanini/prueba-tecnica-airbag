@@ -11,12 +11,18 @@ Todas las evaluaciones reales se ejecutaron mediante **OpenRouter** con el model
 | **V1** (`real_ejemplo`) | `eval/preguntas_ejemplo.jsonl` | Original preservada | **80.0%** | 8/10 | 117.63s / 11.763s / 18.972s | 26 / 16 | 72.542 / 3.459 | Sí (`d092be7`) |
 | **V1 recalculada** (`real_ejemplo_rescored`) | `eval/preguntas_ejemplo.jsonl` | Reevaluada offline (`--rescore`) | **100.0%** | 10/10 | 117.63s / 11.763s / 18.972s | 26 / 16 | 72.542 / 3.459 | Sí (`d092be7`) |
 | **V2** (`real_ejemplo_v2`) | `eval/preguntas_ejemplo.jsonl` | Nueva corrida real | **100.0%** | 10/10 | 98.678s / 9.868s / 13.933s | 24 / 14 | 63.155 / 3.058 | Sí (`d092be7`) |
-| **Propias V1** (`real_propias_v1`) | `eval/preguntas_propias.jsonl` | Corrida real | **100.0%** | 8/8 | 79.631s / 9.954s / 14.627s | 18 / 10 | 47.751 / 3.595 | Sí (`50a59c3`) |
+| **V3** (`real_ejemplo_v3`) | `eval/preguntas_ejemplo.jsonl` | Corrida real tras ajustes de prompt/robustez | **100.0%** | 10/10 | 89.721s / 8.972s / 10.619s | 22 / 12 | 61.843 / 3.481 | Local |
+| **Propias V1** (`real_propias_v1`) | `eval/preguntas_propias.jsonl` | Corrida real (anterior a ajustes 4B/4C) | **100.0%** | 8/8 | 79.631s / 9.954s / 14.627s | 18 / 10 | 47.751 / 3.595 | Sí (`50a59c3`) |
 | **Smoke** (`smoke_openrouter`) | `eval/preguntas_ejemplo.jsonl` (P01, P03) | Prueba inicial | **100.0%** | 2/2 | 20.657s / 10.329s / 11.674s | 4 / 2 | 10.296 / 744 | Sí (`d092be7`) |
 | **Robustez V1** (`real_robustez_v1`) | `eval/preguntas_robustez.jsonl` | Corrida real preservada | **57.1%** | 4/7 | 76.147s / 10.878s / 14.428s | 20 / 13 | 60.413 / 2.849 | Local |
 | **Robustez V1 recalculada** (`real_robustez_v1_rescored`) | `eval/preguntas_robustez.jsonl` | Reevaluada offline (`--rescore`) | **71.4%** | 5/7 | 76.147s / 10.878s / 14.428s | 20 / 13 | 60.413 / 2.849 | Local |
+| **Robustez V2** (`real_robustez_v2`) | `eval/preguntas_robustez.jsonl` | Corrida real tras corregir `R01`/`R07` | **100.0%** | 7/7 | 73.881s / 10.554s / 12.245s | 15 / 8 | 46.673 / 5.364 | Local |
 
-*Nota sobre robustez (`R01`–`R07`):* en `real_robustez_v1`, `R03` fue un falso negativo del evaluador (corregido en el re-scoring a `5/7`), mientras que `R01` y `R07` fueron errores reales del agente al anteponer `"0 quejas"`/`"0 pedidos"` (corregido en `app/prompts.py`, pendiente de nueva corrida real). Detalle completo en [`docs/robustness_analysis.md`](robustness_analysis.md).
+*Notas:*
+- *V3 (`real_ejemplo_v3`):* `numero` 4/4, `lista` 1/1, `texto` 5/5; costo estimado **US\$0.06538** (promedio US\$0.006538/pregunta).
+- *Propias (`P11`–`P18`):* `8/8` en `real_propias_v1`; falta repetir la corrida en la versión final.
+- *Robustez V2 (`real_robustez_v2`):* `7/7` (`texto` 7/7); costo estimado **US\$0.060631** (promedio US\$0.008662/pregunta). Detalle en [`docs/robustness_analysis.md`](robustness_analysis.md).
+- *Prueba manual de recomendaciones JSON:* solicitó priorizar 3 sucursales de la última semana; devolvió JSON válido para `S014`, `S056` y `S002` en `38.246s`, con `8` llamadas al LLM y `8` llamadas a herramientas (incluyendo 1 error inicial de `submit_recommendations` recuperado automáticamente por el agente, cuya causa raíz fue corregida en la fase 4C).
 
 ### Desglose por tipo de pregunta (V1 recalculada, V2 y Propias V1)
 - **V1 recalculada (`10/10`):** `numero` 4/4 (100%), `lista` 1/1 (100%), `texto` 5/5 (100%).

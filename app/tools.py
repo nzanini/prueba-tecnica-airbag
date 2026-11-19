@@ -141,30 +141,70 @@ def _extract_branch_evidence(evidence_records: list[dict], sid: str) -> tuple[li
     return nums, metrics
 
 
+def _strip_dates_and_scales(texto: str) -> str:
+    """Elimina fechas ISO/DD-MM-YYYY y escalas ('por cada 1.000') antes de extraer cifras."""
+    t = re.sub(r"\b\d{4}-\d{2}-\d{2}\b", " ", texto)
+    t = re.sub(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", " ", t)
+    t = re.sub(r"\b(?:por\s+cada|por|cada)\s+1[.,]000\b", " ", t, flags=re.IGNORECASE)
+    return t
+
+
 def _check_contradictions(sid: str, evidencia: str, metrics: dict[str, list[float]]) -> None:
     """Detecta contradicciones demostrables entre métricas consultadas de ``sid`` y ``evidencia``."""
-    checks = [
-        ("quejas", r"(\d[\d.,]*)\s+quejas?\b", 0.5),
-        ("pedidos", r"(\d[\d.,]*)\s+pedidos(?:\s+validos|\s+válidos)?\b", 0.5),
-        ("tasa", r"\btasa(?:\s+de\s+quejas)?(?:\s+semanal)?\s*(?:de|:|=)?\s*(\d[\d.,]*)", 0.06),
-        ("dias", r"(\d[\d.,]*)\s+d[ií]as\s+operativos\b", 0.5),
-    ]
-    for mkey, pat, tol in checks:
-        vals = metrics.get(mkey) or []
-        if not vals:
-            continue
-        for m in re.finditer(pat, evidencia, flags=re.IGNORECASE):
-            # Ignorar escalas tipo "por 1.000 pedidos" o "cada 1,000 pedidos"
-            prefix = evidencia[max(0, m.start() - 12):m.start()].lower()
-            if mkey == "pedidos" and any(w in prefix for w in ("cada ", "por ")):
+    tasa_vals = list(metrics.get("tasa") or [])
+    if not tasa_vals and metrics.get("quejas") and metrics.get("pedidos"):
+        tasa_vals = [1000.0 * q / p for q in metrics["quejas"] for p in metrics["pedidos"] if p > 0]
+
+    # 1) Quejas (conteo absoluto, excluyendo tasas "... quejas por 1.000" y porcentajes)
+    if metrics.get("quejas"):
+        for m in re.finditer(r"(\d[\d.,]*)\s*(%?)\s+quejas?\b", evidencia, flags=re.IGNORECASE):
+            if m.group(2) == "%":
+                continue
+            prefix = evidencia[max(0, m.start() - 28):m.start()].lower()
+            suffix = evidencia[m.end():m.end() + 25].lower()
+            if re.search(r"\btasa\b|\bporcentaje\b", prefix):
+                continue
+            if re.match(r"\s+por\s+(?:cada\s+)?1[.,]?000\b", suffix):
                 continue
             parsed = _numeros(m.group(1))
-            if not parsed:
-                continue
-            claimed = parsed[0]
-            if not any(abs(v - claimed) <= tol for v in vals):
+            if parsed and not any(abs(v - parsed[0]) <= 0.5 for v in metrics["quejas"]):
                 raise RecommendationError(
-                    f"{sid}: evidencia contradictoria para {mkey} (afirma {claimed}, consultado {vals})."
+                    f"{sid}: evidencia contradictoria para quejas (afirma {parsed[0]}, consultado {metrics['quejas']})."
+                )
+
+    # 2) Pedidos (excluyendo escalas "por/cada 1.000 pedidos")
+    if metrics.get("pedidos"):
+        for m in re.finditer(r"(\d[\d.,]*)\s+pedidos(?:\s+validos|\s+válidos)?\b", evidencia, flags=re.IGNORECASE):
+            prefix = evidencia[max(0, m.start() - 12):m.start()].lower()
+            if any(w in prefix for w in ("cada ", "por ")):
+                continue
+            parsed = _numeros(m.group(1))
+            if parsed and not any(abs(v - parsed[0]) <= 0.5 for v in metrics["pedidos"]):
+                raise RecommendationError(
+                    f"{sid}: evidencia contradictoria para pedidos (afirma {parsed[0]}, consultado {metrics['pedidos']})."
+                )
+
+    # 3) Tasas (tanto "tasa de X" como "X quejas por cada 1.000")
+    if tasa_vals:
+        tasa_pats = (
+            r"\btasa(?:\s+de\s+quejas)?(?:\s+semanal)?\s*(?:de|:|=)?\s*(\d[\d.,]*)",
+            r"(\d[\d.,]*)\s+quejas?\s+por\s+(?:cada\s+)?1[.,]?000\b",
+        )
+        for pat in tasa_pats:
+            for m in re.finditer(pat, evidencia, flags=re.IGNORECASE):
+                parsed = _numeros(m.group(1))
+                if parsed and not any(abs(v - parsed[0]) <= 0.06 for v in tasa_vals):
+                    raise RecommendationError(
+                        f"{sid}: evidencia contradictoria para tasa (afirma {parsed[0]}, consultado {[round(v, 2) for v in tasa_vals]})."
+                    )
+
+    # 4) Días operativos
+    if metrics.get("dias"):
+        for m in re.finditer(r"(\d[\d.,]*)\s+d[ií]as\s+operativos\b", evidencia, flags=re.IGNORECASE):
+            parsed = _numeros(m.group(1))
+            if parsed and not any(abs(v - parsed[0]) <= 0.5 for v in metrics["dias"]):
+                raise RecommendationError(
+                    f"{sid}: evidencia contradictoria para dias (afirma {parsed[0]}, consultado {metrics['dias']})."
                 )
 
 
@@ -218,8 +258,9 @@ def validate_recommendations(items: Any, valid_ids: set[str], corpus: str | None
 
         ref_nums = branch_nums if branch_nums else corpus_nums
         if corpus is not None or evidence_records is not None:
-            pct_vals = {float(v) for m in re.finditer(r"(\d[\d.,]*)\s*%", evidencia) for v in _numeros(m.group(1))}
-            faltan = [n for n in _numeros(evidencia) if not _respaldado_ext(n, ref_nums, is_percent=(n in pct_vals))]
+            ev_clean = _strip_dates_and_scales(evidencia)
+            pct_vals = {float(v) for m in re.finditer(r"(\d[\d.,]*)\s*%", ev_clean) for v in _numeros(m.group(1))}
+            faltan = [n for n in _numeros(ev_clean) if not _respaldado_ext(n, ref_nums, is_percent=(n in pct_vals))]
             if faltan:
                 warnings.append(f"{sid}: evidencia no verificable en las consultas de esta sucursal: {faltan[:6]}")
         limpio.append({k: it[k].strip() for k in REC_KEYS})

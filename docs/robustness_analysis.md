@@ -34,7 +34,13 @@ Los resultados históricos de la corrida real se conservan intactos en `eval/res
 3. **Re-scoring de V1 (`eval/results/real_robustez_v1_rescored/`):**
    - Al reevaluar las respuestas originales sin llamar al LLM, el resultado pasa de **4/7 (57.1%)** a **5/7 (71.4%)**: `R03` pasa a `correct` y `R01`/`R07` permanecen `incorrect` (errores reales del agente previo a la corrección del prompt).
 
-## 5. Limitaciones y próxima verificación
+## 5. Validación posterior: Robustez V2 (`7/7` — `100%`) y limitaciones
 
-- Los tests offline confirman el criterio de evaluación, pero la mejora real de `R01` y `R07` en `app/prompts.py` requiere reejecutar `eval/preguntas_robustez.jsonl` contra OpenRouter cuando se autorice consumir cuota.
+Tras incorporar las reglas de `app/prompts.py` y el ajuste de `R03` en `eval/scoring.py`, se ejecutó la corrida real **Robustez V2** (`eval/results/real_robustez_v2/`, `google/gemini-3.8-flash` vía OpenRouter):
+- **Resultado:** **`7/7` (`100.0%`)**, `0` fallos de proveedor, `15` llamadas LLM, `8` llamadas a herramientas.
+- **Latencia:** total `73.881s`, promedio **`10.554s`**, mediana `11.577s`, p95 `12.245s`.
+- **Consumo y costo:** `46.673` tokens de entrada y `5.364` de salida; costo estimado **US\$0.060631**.
+
+**Limitaciones que permanecen:**
 - `contextual_numbers` depende de listar las cifras contextuales verificadas en el criterio; no consulta DuckDB dinámicamente por cada respuesta textual.
+- El `7/7` mide abstención sobre estas 7 preguntas y no garantiza comportamiento idéntico ante formulaciones adversarias no vistas.

@@ -4,82 +4,62 @@ Prueba técnica de ML/AI Engineer para Airbag: agente en español que permite a 
 
 ## Arquitectura resumida
 
-1. **Auditoría y limpieza (`app/audit_data.py`, `app/prepare_data.py`, `app/db.py`):** diagnostica `data/raw/`, genera datos limpios en `data/processed/` y construye la base local `cafe_tostadero.duckdb` con vistas de métricas (`v_metricas_*`).
-2. **Herramientas y seguridad (`app/sql_guard.py`, `app/tools.py`):** valida estructuralmente el SQL con `sqlglot` (solo `SELECT`/`WITH` sobre relaciones autorizadas), ejecuta en DuckDB de solo lectura sin acceso externo y valida el JSON de recomendaciones (`submit_recommendations`).
+1. **Auditoría y limpieza (`app/audit_data.py`, `app/prepare_data.py`, `app/db.py`):** diagnostica `data/raw/`, genera CSV limpios en `data/processed/` y construye `cafe_tostadero.duckdb` con vistas de métricas (`v_metricas_*`).
+2. **Herramientas y seguridad (`app/sql_guard.py`, `app/tools.py`):** valida el AST SQL con `sqlglot` (solo `SELECT`/`WITH` sobre tablas y vistas autorizadas), consulta DuckDB en modo solo lectura sin acceso externo y valida recomendaciones JSON (`submit_recommendations`).
 3. **Agente y proveedores (`app/agent.py`, `app/llm.py`, `app/config.py`, `app/prompts.py`):** soporta **OpenRouter** (`google/gemini-3.8-flash`) y **Gemini API directo** (`gemini-3.8-flash` con fallback configurable).
-4. **Evaluación (`eval/run.py`, `eval/scoring.py`):** evalúa respuestas reales u offline sobre `eval/preguntas_ejemplo.jsonl` y `eval/preguntas_propias.jsonl`.
+4. **Evaluación (`eval/run.py`, `eval/scoring.py`):** evalúa `eval/preguntas_ejemplo.jsonl`, `eval/preguntas_propias.jsonl` y `eval/preguntas_robustez.jsonl`.
 
-Detalles completos en [`docs/architecture.md`](docs/architecture.md), [`docs/decisions.md`](docs/decisions.md) y [`docs/metrics.md`](docs/metrics.md).
-
-## Requisitos e instalación (Windows PowerShell)
-
-Requiere **Python 3.11+**. Desde la raíz del repositorio:
+## Inicio rápido (Windows PowerShell, Python 3.11+)
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+Copy-Item .env.example .env       # completar OPENROUTER_API_KEY (o GEMINI_API_KEY)
+python -m app.prepare_data        # genera data/processed/ y cafe_tostadero.duckdb
 ```
 
-*(En macOS/Linux: `source .venv/bin/activate`).*
+Guía paso a paso completa (incluyendo diagnóstico, `--verbose`, modo interactivo y problemas frecuentes): [`docs/getting_started.md`](docs/getting_started.md).
 
-## Configuración (`.env`)
-
-Copiar `.env.example` a `.env` (excluido de Git) y completar la clave del proveedor elegido. Airbag puede ejecutar todo el proyecto con su propia clave de **OpenRouter**:
-
-```dotenv
-LLM_PROVIDER=openrouter
-OPENROUTER_API_KEY=tu_clave_de_openrouter
-OPENROUTER_MODEL=google/gemini-3.8-flash
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-```
-
-Para usar Gemini directo, definir `LLM_PROVIDER=gemini` y `GEMINI_API_KEY` (no exige `OPENROUTER_API_KEY`).
-
-## Preparación de datos y reconstrucción de DuckDB
+## Consultas, evaluador y tests
 
 ```powershell
-python -m app.audit_data     # 1) auditoría en solo lectura sobre data/raw/
-python -m app.prepare_data   # 2) limpieza -> data/processed/ + cafe_tostadero.duckdb
-```
-
-`cafe_tostadero.duckdb` está excluida de Git; se reconstruye en segundos con `python -m app.prepare_data`.
-
-## Uso del agente
-
-```powershell
-python -m app.check_models
 python -m app.agent --question "¿Cuántas sucursales tiene la región Costa?"
 python -m app.agent --question "¿Qué sucursales debería visitar esta semana?"
-python -m app.agent          # modo interactivo
+python -m pytest -q
 ```
 
-Opciones: `--provider openrouter|gemini`, `--model <modelo>`, `--verbose` (métricas y trazas en `stderr`) y `--log-file <ruta.jsonl>`. En recomendaciones de visita devuelve únicamente un array JSON con `sucursal_id`, `motivo`, `evidencia` y `accion_sugerida`.
-
-## Evaluación y tests
+Para correr evaluaciones sin sobrescribir resultados históricos, usá siempre un `--out-dir` nuevo:
 
 ```powershell
-python -m pytest -q
-python -m eval.run --questions eval/preguntas_ejemplo.jsonl --out-dir eval/results/real_ejemplo --resume
-python -m eval.run --questions eval/preguntas_propias.jsonl --out-dir eval/results/real_propias --resume
-python -m eval.run --questions eval/preguntas_robustez.jsonl --out-dir eval/results/real_robustez --resume
-python -m eval.run --questions eval/preguntas_ejemplo.jsonl --rescore eval/results/real_ejemplo/results.jsonl
+python -m eval.run --questions eval/preguntas_ejemplo.jsonl --out-dir eval/results/mi_corrida_ejemplo --resume
+python -m eval.run --questions eval/preguntas_propias.jsonl --out-dir eval/results/mi_corrida_propias --resume
+python -m eval.run --questions eval/preguntas_robustez.jsonl --out-dir eval/results/mi_corrida_robustez --resume
 ```
 
-Reportes generados en `eval/results/<corrida>/` (`report.md`, `summary.json`, `results.jsonl`). Justificación de P11–P18 y de las pruebas de robustez R01–R07 (abstención ante datos inexistentes/no causales) en [`docs/eval_cases.md`](docs/eval_cases.md).
+## Resultados principales (`google/gemini-3.8-flash` vía OpenRouter)
 
-## Resultados obtenidos (`google/gemini-3.8-flash` vía OpenRouter)
-
-| Conjunto | Resultado | Latencia promedio | Costo promedio / pregunta* |
+| Conjunto | Resultado | Latencia media | Costo estimado* |
 |---|---|---|---|
-| Originales V1 / V1 recalculada | 8/10 → **10/10 (100%)** | 11.76s | US\$0.0074 |
-| Originales V2 | **10/10 (100%)** | 9.87s | US\$0.0065 |
-| Propias P11–P18 | **8/8 (100%)** | 9.95s | US\$0.0068 |
+| Originales V3 (`real_ejemplo_v3`) | **10/10 (100%)** | 8.972s | US\$0.06538 |
+| Propias P11–P18 (`real_propias_v1`, corrida previa) | **8/8 (100%)** | 9.954s | US\$0.054224 |
+| Robustez R01–R07 V2 (`real_robustez_v2`) | **7/7 (100%)** | 10.554s | US\$0.060631 |
 
-*\*Estimado con tarifas vigentes en OpenRouter API el 2026-11-18 (US\$0.825 / 1M entrada y US\$4.125 / 1M salida). El 100% aplica a las 18 preguntas evaluadas y no garantiza igual rendimiento ante preguntas desconocidas. Detalle completo en [`docs/evaluation_summary.md`](docs/evaluation_summary.md).*
+*\*Calculado con tarifas de OpenRouter API al 2026-11-18 (US\$0.825 / 1M entrada y US\$4.125 / 1M salida). Aplica únicamente a los conjuntos evaluados.*
 
-## Limitaciones y mejoras futuras
+## Limitaciones y evolución futura
 
-- Recomendaciones: sucursales nuevas (13–14 días) pueden aparecer arriba en rankings por tasa con pocas quejas; conviene ponderar por volumen mínimo.
-- Evaluación textual: determinista sin LLM juez; no evalúa fluidez ni negaciones muy alejadas del término.
-- Mejoras futuras: reducir tokens base del `system_prompt` cargando el esquema bajo demanda y agregar evaluación semántica opcional.
+- Rankings por tasa en recomendaciones: sucursales nuevas (13–14 días) pueden aparecer arriba con pocos pedidos si no se filtra por volumen mínimo.
+- Evaluación textual: determinista (sin LLM juez); depende de criterios configurados.
+- Evolución: la interfaz CLI y `answer_question()` permiten conectar el agente a una API HTTP o dashboard web y realizar comparaciones A/B de modelos.
+
+## Documentación
+
+- [`docs/getting_started.md`](docs/getting_started.md) — Guía de instalación, uso y solución de problemas
+- [`docs/evaluation_summary.md`](docs/evaluation_summary.md) — Resultados históricos (V1–V3, propias, robustez) y costos
+- [`docs/robustness_analysis.md`](docs/robustness_analysis.md) — Análisis detallado de R01–R07
+- [`docs/lessons_learned.md`](docs/lessons_learned.md) — Explicación de negocio, elección de modelo e interfaz
+- [`docs/architecture.md`](docs/architecture.md) — Arquitectura, calidad de datos y aprendizajes técnicos
+- [`docs/decisions.md`](docs/decisions.md) — Registro de decisiones técnicas
+- [`docs/metrics.md`](docs/metrics.md) — Esquema DuckDB y definición de métricas
+- [`docs/eval_cases.md`](docs/eval_cases.md) — Justificación y SQL de referencia de P11–P18 y R01–R07

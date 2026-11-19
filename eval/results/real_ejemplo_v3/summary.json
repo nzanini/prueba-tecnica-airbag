@@ -1,0 +1,68 @@
+{
+  "mode": "real",
+  "questions_file": "eval/preguntas_ejemplo.jsonl",
+  "total_questions": 10,
+  "evaluated_questions": 10,
+  "counts": {
+    "correct": 10,
+    "incorrect": 0,
+    "not_evaluable": 0,
+    "extraction_error": 0,
+    "provider_error": 0
+  },
+  "accuracy_evaluated": 1.0,
+  "success_rate_total": 1.0,
+  "by_type": {
+    "numero": {
+      "total": 4,
+      "correct": 4,
+      "evaluated": 4,
+      "accuracy_evaluated": 1.0,
+      "success_rate_total": 1.0
+    },
+    "lista": {
+      "total": 1,
+      "correct": 1,
+      "evaluated": 1,
+      "accuracy_evaluated": 1.0,
+      "success_rate_total": 1.0
+    },
+    "texto": {
+      "total": 5,
+      "correct": 5,
+      "evaluated": 5,
+      "accuracy_evaluated": 1.0,
+      "success_rate_total": 1.0
+    }
+  },
+  "latency": {
+    "samples": 10,
+    "total_s": 89.721,
+    "mean_s": 8.972,
+    "median_s": 9.137,
+    "p95_s": 10.619
+  },
+  "llm": {
+    "total_attempts": 22,
+    "total_calls": 22,
+    "total_failures": 0,
+    "total_retries": 0,
+    "total_model_switches": 0,
+    "fallback_questions": 0,
+    "models_used": [
+      "google/gemini-3.8-flash"
+    ]
+  },
+  "tools": {
+    "total_calls": 12,
+    "total_errors": 0,
+    "questions_without_tools": 0
+  },
+  "tokens_and_cost": {
+    "input_tokens": 61843,
+    "output_tokens": 3481,
+    "tokens_partial_questions": 0,
+    "known_cost_usd": 0.06538,
+    "cost_unknown_questions": 0
+  }
+}

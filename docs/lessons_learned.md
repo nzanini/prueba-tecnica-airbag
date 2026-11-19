@@ -1,0 +1,25 @@
+# Explicación del proyecto y decisiones de negocio
+
+## 1. Qué problema resolvemos
+Un gerente regional de *Café Tostadero* (120 sucursales, 4 regiones) necesita hacer preguntas operativas en español —por ejemplo, qué sucursales tienen más quejas por cada 1.000 pedidos, qué reclamos predominan o qué tiendas priorizar— sin depender de analistas ni escribir SQL manualmente.
+
+Como el destinatario es un gerente interno que toma decisiones operativas (visitas, auditorías, asignación de recursos), **una cifra inventada o una conclusión causal falsa es peor que no responder**. Por eso el sistema prioriza la trazabilidad de cada número y la abstención explícita cuando los datos no alcanzan.
+
+## 2. Cómo funciona sin inventar cifras
+- **Por qué DuckDB y herramientas SQL (y no RAG ni entrenamiento):** las preguntas del negocio son agregaciones, filtros temporales y tasas sobre tablas estructuradas. Un RAG tradicional recupera fragmentos de texto y no sabe sumar pedidos ni calcular razones exactas; entrenar o ajustar un modelo tampoco garantiza aritmética exacta sobre datos vivos. Con *function calling*, el modelo traduce la pregunta a consultas SQL de solo lectura sobre DuckDB (`sqlglot` + conexión bloqueada) y responde únicamente con lo devuelto.
+- **Limpieza con trazabilidad:** en `data/raw/` encontramos `199` quejas duplicadas exactas, `3` días con pedidos negativos (`-5`, `-44`, `-14`) y `5` registros con `99.999` pedidos. Se deduplicaron las quejas (`6.646` únicas) y se pasaron a `NULL` los `8` pedidos inválidos (conservando las filas y los originales en `ventas_diarias_calidad.csv` y `transformations_log.csv`).
+- **Fechas de apertura:** `6` sucursales abrieron a mitad de marzo (13–14 días operativos). Tratar los días previos como `0` ventas o comparar totales acumulados contra sucursales de `84` días distorsionaría los rankings; por eso el calendario operativo nace en la `fecha_apertura` de cada tienda.
+- **Capacitaciones y causalidad:** de las `36` sucursales capacitadas el `2026-02-09`, `21` fueron elegidas `por_desempeno` (ya tenían tasa previa de `3.49`‰ frente a `2.15`‰ de las `15` asignadas aleatoriamente y `1.91`‰ de las `84` no capacitadas). Por ese sesgo de selección, comparar antes/después no demuestra causalidad.
+
+## 3. Aprendizajes de evaluación y robustez
+- **Separar errores del agente de errores del evaluador:** en la primera corrida real (`8/10`), el agente respondió bien `P06` y `P10`, pero el evaluador falló por concatenar listas repetidas en una explicación (`P06`) y exigir singular/porcentaje exacto (`P10`). Algo similar ocurrió en `R03` (métrica de facturación ausente), donde el agente se abstuvo correctamente citando `9.317` pedidos reales como contexto.
+- **Preguntas sin respuesta posible (`R01`–`R07`):** las pruebas de robustez revelaron un problema real importante: al ver `COUNT(*) = 0` para una sucursal inexistente (`S150`) o antes de la apertura (`S082` en febrero), el agente anteponía `"0 quejas."` o `"0 pedidos."` siguiendo la regla de formato corto. Ajustar el *system prompt* para diferenciar **cero observado** de **entidad inexistente / ausencia de datos / contrafactuales** eliminó ambos errores en la corrida real V2 (`7/7`).
+- **Limitaciones que permanecen:** la evaluación textual es determinista (sin LLM juez) y depende de criterios configurados; la verificación de evidencia en recomendaciones cubre cifras por sucursal, porcentajes/tasas simples y contradicciones directas, pero no análisis estadísticos complejos; y en rankings por tasa, sucursales nuevas con pocos pedidos pueden aparecer arriba si no se exige un volumen mínimo.
+
+## 4. Elección del modelo como decisión de negocio
+- **Por qué Gemini 3.8 Flash (vía OpenRouter):** ofrece un equilibrio práctico entre latencia (~9–11 s por pregunta con 1–3 rondas de SQL), costo (~US\$0.0065–0.0074 por pregunta) y capacidad de *function calling*.
+- **Errores de instrucciones vs capacidad del modelo:** los fallos observados en `R01`/`R07` y el rechazo inicial en la prueba de recomendaciones (`5.58` confundido con conteo de quejas) se resolvieron ajustando instrucciones y validadores, sin necesidad de cambiar a un modelo más costoso.
+- **Evolución experimental:** no debe asumirse que un modelo más grande y caro resolverá por sí solo casos ambiguos; como mejora futura, conviene ejecutar una **comparación A/B** controlada (mismas preguntas, mismo evaluador) frente a un modelo de gama superior para medir si la ganancia en precisión justifica el mayor costo y latencia.
+
+## 5. Interfaz y evolución futura
+El agente se expone actualmente mediante **CLI** (`python -m app.agent`) y una función Python reutilizable (`answer_question()`). Esta elección mantiene la complejidad al mínimo, facilita la automatización de pruebas y separa claramente la lógica analítica de la capa de presentación. En fases productivas, `answer_question()` puede conectarse directamente a una **API HTTP**, un **dashboard interno** o una **interfaz web de chat** sin reescribir el núcleo ni las herramientas DuckDB.
