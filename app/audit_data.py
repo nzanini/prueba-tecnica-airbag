@@ -96,6 +96,7 @@ class Auditoria:
                   recomendacion, evidencia=None, afectados=None):
         """Registra una validación. Si no afecta registros queda como 'superada'."""
         filas = self.sql(filas_sql) if filas_sql else []
+        filas = sorted(filas, key=lambda f: (f[0] is None, f[0] if f[0] is not None else 0, str(f[1]), str(f[2])))
         n = afectados if afectados is not None else len(filas)
         if n == 0:
             self.passed.append({"id": id_, "tabla": tabla, "titulo": titulo,
@@ -294,7 +295,7 @@ class Auditoria:
         n_out = self.scalar("SELECT count(*) FROM ven_out")
         top = self.sql("SELECT p, count(*) FROM ven_out WHERE far_out GROUP BY 1 ORDER BY 2 DESC, 1 DESC LIMIT 5")
         zmod = self.sql("SELECT max(z) FILTER (WHERE NOT far_out) FROM ven_out")[0]
-        top_ev = self.sql("SELECT sucursal_id||' '||f_raw||': '||p||' (mediana sucursal '||CAST(round(med) AS INT)||')' FROM ven_out WHERE far_out ORDER BY z DESC LIMIT 8")
+        top_ev = self.sql("SELECT sucursal_id||' '||f_raw||': '||p||' (mediana sucursal '||CAST(round(med) AS INT)||')' FROM ven_out WHERE far_out ORDER BY z DESC, sucursal_id, f_raw LIMIT 8")
         det = "'pedidos='||p||' (mediana sucursal='||CAST(round(med) AS INT)||', z='||CAST(round(z,1) AS VARCHAR)||')'"
         self.registrar("V-EXT", SEV_SOSPECHOSO, "Valores extremos de pedidos (atípicos por ambos criterios)", T,
             f"SELECT linea, f_raw||' '||sucursal_id, {det} FROM ven_out WHERE far_out ORDER BY linea",
@@ -457,8 +458,8 @@ class Auditoria:
             "SELECT min(n), median(n), max(n), count(*) FILTER (WHERE n<84) FROM (SELECT sucursal_id, count(*) n FROM ven GROUP BY 1)")[0]
         self.secciones["quejas_por_sucursal"] = self.sql(
             "SELECT min(n), median(n), max(n) FROM (SELECT sucursal_id, count(*) n FROM que GROUP BY 1)")[0]
-        self.secciones["quejas_categoria"] = self.sql("SELECT categoria, count(*) FROM que GROUP BY 1 ORDER BY 2 DESC")
-        self.secciones["quejas_canal"] = self.sql("SELECT canal, count(*) FROM que GROUP BY 1 ORDER BY 2 DESC")
+        self.secciones["quejas_categoria"] = self.sql("SELECT categoria, count(*) FROM que GROUP BY 1 ORDER BY 2 DESC, 1")
+        self.secciones["quejas_canal"] = self.sql("SELECT canal, count(*) FROM que GROUP BY 1 ORDER BY 2 DESC, 1")
         self.secciones["pedidos_stats"] = self.sql(
             "SELECT min(p), quantile_cont(p,0.25), median(p), quantile_cont(p,0.75), max(p) FROM ven WHERE p IS NOT NULL")[0]
         # Capacitaciones: ¿grupos comparables antes de la intervención? (evidencia, no conclusión causal)
@@ -593,7 +594,7 @@ def generar_reporte(a: Auditoria) -> str:
 
 def escribir_salidas(a: Auditoria, out_dir: Path):
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "quality_report.md").write_text(generar_reporte(a), encoding="utf-8")
+    (out_dir / "quality_report.md").write_text(generar_reporte(a), encoding="utf-8", newline="\n")
     resumen = {
         "periodo": {"inicio": PERIODO_INICIO, "fin": PERIODO_FIN},
         "archivos_sha256": a.hashes,
@@ -607,11 +608,15 @@ def escribir_salidas(a: Auditoria, out_dir: Path):
                            "grupos": [list(g) for g in a.secciones["capacitaciones_grupos"]]},
     }
     (out_dir / "quality_summary.json").write_text(
-        json.dumps(resumen, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        json.dumps(resumen, ensure_ascii=False, indent=2, default=str), encoding="utf-8", newline="\n")
+    rows_sorted = sorted(
+        a.rows,
+        key=lambda r: (r[0], r[1], r[2], r[3] is None, r[3] if r[3] is not None else 0, str(r[4]), str(r[5])),
+    )
     with open(out_dir / "quality_issues.csv", "w", encoding="utf-8", newline="") as f:
-        w = csv.writer(f)
+        w = csv.writer(f, lineterminator="\n")
         w.writerow(["issue_id", "severidad", "tabla", "linea_csv", "clave", "detalle"])
-        for r in a.rows:
+        for r in rows_sorted:
             w.writerow(["" if x is None else x for x in r])
 
 

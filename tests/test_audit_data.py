@@ -113,3 +113,13 @@ def test_detecta_defectos_inyectados(tmp_path):
 def test_falta_de_archivos_da_error_claro(tmp_path):
     with pytest.raises(FileNotFoundError):
         audit_data.main([], raw_dir=tmp_path, out_dir=tmp_path / "o")
+
+
+def test_auditoria_es_determinista(tmp_path):
+    out1, out2 = tmp_path / "run1", tmp_path / "run2"
+    audit_data.main([], raw_dir=RAW, out_dir=out1)
+    audit_data.main([], raw_dir=RAW, out_dir=out2)
+    for nombre in ("quality_report.md", "quality_summary.json", "quality_issues.csv"):
+        h1 = hashlib.sha256((out1 / nombre).read_bytes()).hexdigest()
+        h2 = hashlib.sha256((out2 / nombre).read_bytes()).hexdigest()
+        assert h1 == h2, f"{nombre} difiere entre ejecuciones"
