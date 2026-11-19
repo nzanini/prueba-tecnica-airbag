@@ -338,3 +338,181 @@ def test_rescore_preserva_original_y_recalcula(tmp_path):
     assert orig_file.read_bytes() == orig_bytes  # original intacto
     assert summary["counts"]["correct"] == 1 and summary["accuracy_evaluated"] == 1.0
     assert summary["latency"]["total_s"] == 5.0 and summary["tokens_and_cost"]["input_tokens"] == 100
+
+
+# ---------------------------------------------- Fase 5C: trazabilidad y resume seguro
+def test_trazas_herramienta_recuperada_y_no_recuperada(tmp_path):
+    from app.agent import Agent
+    from app.config import Config
+    from app.llm import ToolCall, Turn
+
+    p_db = tmp_path / "t.duckdb"
+    db.build_database(db.PROCESSED_DIR, p_db)
+    cfg = Config(
+        provider="openrouter",
+        api_key="sk-secret-token-12345",
+        model="fake-model",
+        fallback_models=(),
+    )
+
+    class FakeBackend:
+        def __init__(self, turns):
+            self.turns = list(turns)
+        def user_content(self, text):
+            return {"role": "user", "content": text}
+        def tool_results_content(self, results):
+            return {"role": "tool", "content": results}
+        def generate(self, history):
+            return self.turns.pop(0)
+
+    # Caso 1: error de herramienta recuperado en el siguiente turno
+    turns_ok = [
+        Turn(calls=[ToolCall("run_sql", {"query": "SELECT * FROM no_existe"}, id="c1")],
+             model="fake-model", input_tokens=10, output_tokens=5),
+        Turn(calls=[ToolCall("run_sql", {"query": "SELECT count(*) AS n FROM sucursales"}, id="c2")],
+             model="fake-model", input_tokens=10, output_tokens=5),
+        Turn(text="Hay 30 sucursales.", model="fake-model", input_tokens=10, output_tokens=5),
+    ]
+    ag = Agent(cfg, backend=FakeBackend(turns_ok), db_path=p_db)
+    res = ag.ask("¿Cuántas sucursales hay?")
+    ag.close()
+
+    assert res.kind == "text"
+    assert len(res.trace) == 2
+    assert [t["step"] for t in res.trace] == [1, 2]
+    assert res.trace[0]["ok"] is False and res.trace[0]["error_type"] is not None
+    assert res.trace[1]["ok"] is True and res.trace[1]["row_count"] == 1 and res.trace[1]["recovered"] is True
+    assert res.metrics["tool_errors"] == 1 and res.metrics["tool_recoveries"] == 1
+    assert res.metrics["error_source"] is None
+    assert "sk-secret-token-12345" not in json.dumps(res.trace)
+
+    # Caso 2: error de herramienta no recuperado (el agente responde sin recuperarse)
+    turns_unrec = [
+        Turn(calls=[ToolCall("run_sql", {"query": "DROP TABLE sucursales"}, id="c1")],
+             model="fake-model", input_tokens=10, output_tokens=5),
+        Turn(text="No pude consultar la base.", model="fake-model", input_tokens=10, output_tokens=5),
+    ]
+    ag2 = Agent(cfg, backend=FakeBackend(turns_unrec), db_path=p_db)
+    res2 = ag2.ask("Prueba")
+    ag2.close()
+
+    assert res2.trace[0]["ok"] is False and res2.trace[0]["recovered"] is False
+    assert res2.trace[0]["error_type"] == "sql_rejected"
+    assert res2.metrics["tool_recoveries"] == 0
+    assert res2.metrics["error_source"] == "tool"
+
+
+def test_save_traces_y_metadatos_sin_secretos(tmp_path):
+    from app.config import Config
+
+    out = tmp_path / "custom_out"
+
+    class FakeAgent:
+        cfg = Config(provider="openrouter", api_key="sk-secret-999", model="m1", fallback_models=("m2",))
+
+        def ask(self, q):
+            return AgentResult(
+                q, "30 sucursales.", "text", None,
+                {"model_configured": "m1", "model": "m1", "models_used": ["m1"], "fallback_used": False,
+                 "latency_s": 1.0, "input_tokens": 50, "output_tokens": 10, "tokens_partial": False,
+                 "llm_attempts": 1, "llm_calls": 1, "llm_failures": 0, "retries": 0, "model_switches": 0,
+                 "tool_calls": 1, "tool_errors": 0, "tool_recoveries": 0, "tool_errors_by_type": {},
+                 "error_source": None, "errors": []},
+                trace=[{"step": 1, "llm_turn": 1, "tool": "run_sql", "args": {"sql": "SELECT 30"},
+                        "ok": True, "error_type": None, "error": None, "row_count": 1, "recovered": False}],
+            )
+
+        def close(self):
+            pass
+
+    summary = eval_run.run_evaluation(
+        EJEMPLO, out_dir=out, ids=["P01"], save_traces=True, agent_factory=lambda: FakeAgent()
+    )
+    assert (out / "traces.jsonl").exists()
+    traces = eval_run.load_jsonl(out / "traces.jsonl")
+    assert len(traces) == 1 and traces[0]["id"] == "P01" and traces[0]["trace"][0]["tool"] == "run_sql"
+    assert summary["provider"] == "openrouter" and summary["model_configured"] == "m1"
+    assert summary["hashes"]["questions_sha256"] and summary["hashes"]["criteria_sha256"]
+    assert "sk-secret-999" not in (out / "summary.json").read_text(encoding="utf-8")
+    assert "sk-secret-999" not in (out / "traces.jsonl").read_text(encoding="utf-8")
+
+
+def test_resume_rechaza_pregunta_modificada_y_config_incompatible(tmp_path):
+    q_file = tmp_path / "q.jsonl"
+    q1 = {"id": "P01", "pregunta": "¿Cuántas sucursales?", "respuesta_esperada": 30, "tipo": "numero", "tolerancia": 0}
+    q2 = {"id": "P02", "pregunta": "¿Cuántas quejas?", "respuesta_esperada": 442, "tipo": "numero", "tolerancia": 0}
+    q_file.write_text(json.dumps(q1) + "\n" + json.dumps(q2) + "\n", encoding="utf-8")
+
+    out = tmp_path / "run1"
+    r1 = AgentResult("q1", "30.", "text", None, {
+        "model_configured": "m1", "model": "m1", "models_used": ["m1"], "fallback_used": False,
+        "latency_s": 1.0, "input_tokens": 10, "output_tokens": 5, "tokens_partial": False,
+        "llm_attempts": 1, "llm_calls": 1, "llm_failures": 0, "retries": 0, "model_switches": 0,
+        "tool_calls": 1, "tool_errors": 0, "errors": [],
+    })
+    r2_err = AgentResult("q2", "err", "error", None, {**r1.metrics, "models_used": [], "llm_calls": 0, "llm_failures": 1, "errors": ["503"]})
+
+    class FakeAgent:
+        def __init__(self, resps):
+            self.resps = resps
+        def ask(self, q):
+            return self.resps.pop(0)
+        def close(self):
+            pass
+
+    eval_run.run_evaluation(q_file, out_dir=out, provider="openrouter", model="m1",
+                            agent_factory=lambda: FakeAgent([r1, r2_err]))
+
+    # Misma pregunta y configuración: resume funciona
+    r2_ok = AgentResult("q2", "442.", "text", None, r1.metrics)
+    s_ok = eval_run.run_evaluation(q_file, out_dir=out, resume=True, provider="openrouter", model="m1",
+                                   agent_factory=lambda: FakeAgent([r2_ok]))
+    assert s_ok["counts"]["correct"] == 2
+
+    # Modelo distinto: resume debe fallar
+    with pytest.raises(ValueError, match="Modelo incompatible"):
+        eval_run.run_evaluation(q_file, out_dir=out, resume=True, provider="openrouter", model="m-otro")
+
+    # Pregunta modificada: resume debe fallar
+    q1_mod = {**q1, "pregunta": "¿Cuántas sucursales activas?"}
+    q_file.write_text(json.dumps(q1_mod) + "\n" + json.dumps(q2) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="archivo de preguntas"):
+        eval_run.run_evaluation(q_file, out_dir=out, resume=True, provider="openrouter", model="m1")
+
+
+def test_resume_compatible_con_resultados_historicos_sin_hashes(tmp_path):
+    q_file = tmp_path / "q.jsonl"
+    q1 = {"id": "P01", "pregunta": "¿Cuántas sucursales?", "respuesta_esperada": 30, "tipo": "numero", "tolerancia": 0}
+    q2 = {"id": "P02", "pregunta": "¿Cuántas quejas?", "respuesta_esperada": 442, "tipo": "numero", "tolerancia": 0}
+    q_file.write_text(json.dumps(q1) + "\n" + json.dumps(q2) + "\n", encoding="utf-8")
+
+    out = tmp_path / "hist"
+    out.mkdir()
+    # Simula un results.jsonl y summary.json histórico (sin hashes ni provider)
+    rec1 = {
+        "id": "P01", "pregunta": q1["pregunta"], "tipo": "numero", "esperado": 30,
+        "obtenido": "30.", "valor_extraido": 30, "estado": "correct", "motivo": "OK",
+        "modelo_configurado": "m1", "modelo_usado": "m1", "models_used": ["m1"],
+        "fallback_used": False, "latencia_s": 1.0, "tokens_in": 10, "tokens_out": 5,
+        "tokens_partial": False, "costo_usd": None, "cost_status": "unknown_pricing",
+        "llm_attempts": 1, "llm_calls": 1, "llm_failures": 0, "retries": 0,
+        "model_switches": 0, "tool_calls": 1, "tool_errors": 0,
+    }
+    (out / "results.jsonl").write_text(json.dumps(rec1) + "\n", encoding="utf-8")
+    (out / "summary.json").write_text(json.dumps({"mode": "real", "questions_file": "eval/old.jsonl"}), encoding="utf-8")
+
+    r2_ok = AgentResult("q2", "442.", "text", None, {
+        "model_configured": "m1", "model": "m1", "models_used": ["m1"], "fallback_used": False,
+        "latency_s": 1.0, "input_tokens": 10, "output_tokens": 5, "tokens_partial": False,
+        "llm_attempts": 1, "llm_calls": 1, "llm_failures": 0, "retries": 0, "model_switches": 0,
+        "tool_calls": 1, "tool_errors": 0, "errors": [],
+    })
+
+    class FakeAgent:
+        def ask(self, q):
+            return r2_ok
+        def close(self):
+            pass
+
+    s = eval_run.run_evaluation(q_file, out_dir=out, resume=True, agent_factory=lambda: FakeAgent())
+    assert s["counts"]["correct"] == 2

@@ -106,6 +106,33 @@ def schema_text(toolbox: ToolBox) -> str:
     return "\n".join(lineas)
 
 
+def _classify_tool_error(tool_name: str, msg: str) -> str:
+    low = (msg or "").lower()
+    if "límite" in low:
+        return "tool_limit"
+    if "superó" in low and "s." in low:
+        return "timeout"
+    if "duckdb" in low:
+        return "duckdb_error"
+    if "argumentos inválidos" in low:
+        return "invalid_args"
+    if tool_name == "submit_recommendations" or "recomendaciones inválidas" in low:
+        return "recommendation_error"
+    if tool_name == "run_sql":
+        return "sql_rejected"
+    return "tool_error"
+
+
+def _compact_args(args: dict) -> dict:
+    out: dict[str, Any] = {}
+    for k, v in (args or {}).items():
+        if isinstance(v, str) and len(v) > 800:
+            out[k] = v[:800] + "..."
+        else:
+            out[k] = v
+    return out
+
+
 def _call_backend(be: Any, history: list, deadline: float, active_model: str | None) -> Turn:
     if getattr(be, "supports_deadline", False):
         return be.generate(history, deadline=deadline, preferred_model=active_model)
@@ -142,6 +169,9 @@ class Agent:
             "model_switches": 0,
             "tool_calls": 0,
             "tool_errors": 0,
+            "tool_recoveries": 0,
+            "tool_errors_by_type": {},
+            "error_source": None,
             "latency_s": 0.0,
             "input_tokens": None,
             "output_tokens": None,
@@ -162,6 +192,8 @@ class Agent:
 
         history = [be.user_content(question)]
         answer, kind, data, error, json_retries = "", "text", None, None, 0
+        error_source: str | None = None
+        failed_tools: set[str] = set()
         rec_required = is_recommendation_request(question)
         active_model: str | None = None
 
@@ -192,6 +224,7 @@ class Agent:
         for _ in range(self.config.max_llm_calls):
             if time.perf_counter() >= deadline:
                 error = f"Se superó el presupuesto de tiempo ({self.config.question_budget_s:.0f}s) para responder."
+                error_source = "provider"
                 break
             try:
                 turn = _call_backend(be, history, deadline, active_model)
@@ -200,6 +233,7 @@ class Agent:
                 if m["attempts"]:
                     m["model"] = m["attempts"][-1]["model"]
                 error = str(e)
+                error_source = "provider"
                 break
             if turn.attempts:
                 record_attempts(turn.attempts)
@@ -218,8 +252,28 @@ class Agent:
                 for c in turn.calls:
                     res = tb.call(c.name, c.args)
                     results.append((c, res))
-                    trace.append({"tool": c.name, "args": c.args, "ok": bool(res.get("ok")),
-                                  "error": res.get("error"), "row_count": res.get("row_count")})
+                    ok = bool(res.get("ok"))
+                    err_msg = res.get("error")
+                    err_type = None if ok else _classify_tool_error(c.name, err_msg or "")
+                    recovered = False
+                    if not ok:
+                        failed_tools.add(c.name)
+                        m["tool_errors_by_type"][err_type] = m["tool_errors_by_type"].get(err_type, 0) + 1
+                    elif c.name in failed_tools:
+                        recovered = True
+                        m["tool_recoveries"] += 1
+                        failed_tools.discard(c.name)
+                    trace.append({
+                        "step": len(trace) + 1,
+                        "llm_turn": m["llm_calls"],
+                        "tool": c.name,
+                        "args": _compact_args(c.args),
+                        "ok": ok,
+                        "error_type": err_type,
+                        "error": err_msg,
+                        "row_count": res.get("row_count"),
+                        "recovered": recovered,
+                    })
                 history.append(be.tool_results_content(results))
                 if tb.final_recommendations is not None:
                     data, kind = tb.final_recommendations, "json"
@@ -229,6 +283,7 @@ class Agent:
             text = turn.text.strip()
             if not text:
                 error = "El modelo devolvió una respuesta vacía."
+                error_source = "agent"
                 break
             try:
                 parsed = parse_recommendations_text(text)
@@ -244,6 +299,7 @@ class Agent:
                         f"Tu respuesta JSON no es válida: {e} Corregila y enviala con la herramienta submit_recommendations.")]
                     continue
                 error = f"Recomendaciones no válidas tras reintento: {e}"
+                error_source = "agent"
                 break
             if rec_required:
                 if json_retries < 1 and tb.corpus:
@@ -254,19 +310,24 @@ class Agent:
                     continue
                 error = ("Se solicitó una recomendación de sucursales, pero no se obtuvo un array JSON válido "
                          "(el modelo respondió con texto narrativo o sin evidencia consultada).")
+                error_source = "agent"
                 break
             answer = text
             break
         else:
             error = f"Se alcanzó el límite de {self.config.max_llm_calls} llamadas al modelo sin respuesta final."
+            error_source = "tool" if (tb.errors and tb.errors == tb.calls) else "agent"
 
         if error:
             m["errors"].append(error)
+            m["error_source"] = error_source or ("tool" if tb.errors and tb.errors == tb.calls else "agent")
             kind = "error"
             if rec_required:
                 data, answer = [], "[]"
             else:
                 answer = f"No pude completar la consulta: {error}"
+        elif failed_tools:
+            m["error_source"] = "tool"
         m["fallback_used"] = any(mod != self.config.model for mod in m["models_used"]) or m["model_switches"] > 0
         m["tool_calls"], m["tool_errors"] = tb.calls, tb.errors
         m["warnings"] = list(tb.warnings)

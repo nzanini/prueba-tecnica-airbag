@@ -9,6 +9,8 @@ Uso offline (sin llamadas a Gemini, para validar el evaluador):
 from __future__ import annotations
 
 import argparse
+import datetime as dt
+import hashlib
 import json
 import math
 import statistics
@@ -18,7 +20,7 @@ from typing import Any
 
 from app.agent import Agent
 from app.config import ConfigError, load_config
-from app.db import get_connection
+from app.db import PROCESSED_DIR, get_connection
 from eval.scoring import evaluate_item, evaluate_recommendations_json
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,7 +87,31 @@ def _percentile(values: list[float], pct: float) -> float | None:
     return round(s[f] + (s[c] - s[f]) * (k - f), 3)
 
 
-def summarize(records: list[dict], mode: str, questions_path: Path) -> dict:
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _sha256_file(path: Path | None) -> str | None:
+    if path and path.exists():
+        return _sha256_bytes(path.read_bytes())
+    return None
+
+
+def _data_sha256(processed_dir: Path = PROCESSED_DIR) -> str | None:
+    if not processed_dir.exists():
+        return None
+    h = hashlib.sha256()
+    files = sorted(processed_dir.glob("*.csv"))
+    if not files:
+        return None
+    for f in files:
+        h.update(f.name.encode("utf-8"))
+        h.update(f.read_bytes())
+    return h.hexdigest()
+
+
+def summarize(records: list[dict], mode: str, questions_path: Path,
+              metadata: dict[str, Any] | None = None) -> dict:
     counts = {s: 0 for s in ("correct", "incorrect", "not_evaluable", "extraction_error", "provider_error")}
     for r in records:
         st = r["estado"]
@@ -113,12 +139,32 @@ def summarize(records: list[dict], mode: str, questions_path: Path) -> dict:
     unknown_costs = sum(1 for r in records if r.get("costo_usd") is None)
     models_used = sorted({m for r in records for m in (r.get("models_used") or ([r["modelo_usado"]] if r.get("modelo_usado") else []))})
 
-    return {
+    err_by_type: dict[str, int] = {}
+    for r in records:
+        for k, v in (r.get("tool_errors_by_type") or {}).items():
+            err_by_type[k] = err_by_type.get(k, 0) + int(v)
+
+    prov_errs = sum(1 for r in records if r["estado"] == "provider_error" and r.get("error_source") != "agent")
+    agent_errs = sum(1 for r in records if r["estado"] == "provider_error" and r.get("error_source") == "agent")
+    eval_errs = counts["extraction_error"] + counts["not_evaluable"]
+
+    out = {
         "mode": mode,
+        "timestamp_utc": (metadata or {}).get("timestamp_utc") or dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "questions_file": str(questions_path.as_posix()),
+        "provider": (metadata or {}).get("provider"),
+        "model_configured": (metadata or {}).get("model_configured"),
+        "agent_config": (metadata or {}).get("agent_config"),
+        "hashes": (metadata or {}).get("hashes"),
         "total_questions": total,
         "evaluated_questions": evaluated,
         "counts": counts,
+        "errors_by_source": {
+            "provider_errors": prov_errs,
+            "agent_errors": agent_errs,
+            "evaluator_errors": eval_errs,
+            "incorrect_answers": counts["incorrect"],
+        },
         "accuracy_evaluated": round(counts["correct"] / evaluated, 4) if evaluated else None,
         "success_rate_total": round(counts["correct"] / total, 4) if total else None,
         "by_type": by_type,
@@ -141,7 +187,10 @@ def summarize(records: list[dict], mode: str, questions_path: Path) -> dict:
         "tools": {
             "total_calls": sum(int(r.get("tool_calls") or 0) for r in records),
             "total_errors": sum(int(r.get("tool_errors") or 0) for r in records),
+            "total_recoveries": sum(int(r.get("tool_recoveries") or 0) for r in records),
+            "questions_with_tool_errors": sum(1 for r in records if int(r.get("tool_errors") or 0) > 0),
             "questions_without_tools": sum(1 for r in records if int(r.get("tool_calls") or 0) == 0),
+            "errors_by_type": err_by_type,
         },
         "tokens_and_cost": {
             "input_tokens": sum(int(r["tokens_in"]) for r in records if r.get("tokens_in") is not None),
@@ -149,8 +198,10 @@ def summarize(records: list[dict], mode: str, questions_path: Path) -> dict:
             "tokens_partial_questions": sum(1 for r in records if r.get("tokens_partial")),
             "known_cost_usd": round(sum(known_costs), 6) if known_costs else None,
             "cost_unknown_questions": unknown_costs,
+            "cost_note": "Estimado sobre tarifas configuradas en eval/pricing.json; no representa facturación oficial.",
         },
     }
+    return out
 
 
 def render_markdown(summary: dict, records: list[dict]) -> str:
@@ -158,12 +209,24 @@ def render_markdown(summary: dict, records: list[dict]) -> str:
     lat = summary["latency"]
     llm = summary["llm"]
     tc = summary["tokens_and_cost"]
+    tools = summary["tools"]
     acc = f"{summary['accuracy_evaluated'] * 100:.1f}%" if summary["accuracy_evaluated"] is not None else "N/A"
     tot = f"{summary['success_rate_total'] * 100:.1f}%" if summary["success_rate_total"] is not None else "N/A"
     lines = [
         f"# Reporte de evaluación ({summary['mode']})",
         "",
+        f"- Fecha UTC: `{summary.get('timestamp_utc', 'N/A')}`",
+        f"- Proveedor / modelo: `{summary.get('provider', 'N/A')}` / `{summary.get('model_configured', 'N/A')}`",
         f"- Archivo de preguntas: `{summary['questions_file']}`",
+    ]
+    hashes = summary.get("hashes") or {}
+    if hashes:
+        lines.append(
+            f"- Hashes SHA-256: preguntas=`{(hashes.get('questions_sha256') or 'N/A')[:12]}` | "
+            f"criterios=`{(hashes.get('criteria_sha256') or 'N/A')[:12]}` | "
+            f"datos=`{(hashes.get('data_sha256') or 'N/A')[:12]}`"
+        )
+    lines += [
         f"- Total: **{summary['total_questions']}** | Evaluables: **{summary['evaluated_questions']}** | "
         f"Aciertos: **{c['correct']}** | Errores: **{c['incorrect']}** | "
         f"Extracción: **{c['extraction_error']}** | No evaluables: **{c['not_evaluable']}** | Fallos proveedor: **{c['provider_error']}**",
@@ -178,6 +241,7 @@ def render_markdown(summary: dict, records: list[dict]) -> str:
         ae = f"{v['accuracy_evaluated'] * 100:.1f}%" if v["accuracy_evaluated"] is not None else "N/A"
         st = f"{v['success_rate_total'] * 100:.1f}%"
         lines.append(f"| {tipo} | {v['total']} | {v['evaluated']} | {v['correct']} | {ae} | {st} |")
+    ebs = summary.get("errors_by_source") or {}
     lines += [
         "",
         "## Rendimiento, llamadas y costos",
@@ -185,11 +249,14 @@ def render_markdown(summary: dict, records: list[dict]) -> str:
         f"- Latencia (n={lat['samples']}): promedio={lat['mean_s']}s, mediana={lat['median_s']}s, p95={lat['p95_s']}s, total={lat['total_s']}s",
         f"- LLM: intentos={llm['total_attempts']}, exitosos={llm['total_calls']}, fallidos={llm['total_failures']}, "
         f"reintentos={llm['total_retries']}, fallbacks={llm['fallback_questions']} (modelos: {llm['models_used']})",
-        f"- Herramientas: llamadas={summary['tools']['total_calls']}, errores={summary['tools']['total_errors']}",
+        f"- Herramientas: llamadas={tools['total_calls']}, errores={tools['total_errors']}, "
+        f"recuperaciones={tools.get('total_recoveries', 0)} (por tipo: {tools.get('errors_by_type', {})})",
+        f"- Errores por origen: proveedor={ebs.get('provider', 0)}, agente={ebs.get('agent', 0)}, "
+        f"herramienta={ebs.get('tool', 0)}, evaluador={ebs.get('evaluator', 0)}",
         f"- Tokens conocidos: entrada={tc['input_tokens']}, salida={tc['output_tokens']} "
         f"(preguntas con tokens parciales/desconocidos: {tc['tokens_partial_questions']})",
         f"- Costo estimado (USD): {tc['known_cost_usd'] if tc['known_cost_usd'] is not None else 'desconocido'} "
-        f"(preguntas con costo desconocido: {tc['cost_unknown_questions']})",
+        f"(preguntas con costo desconocido: {tc['cost_unknown_questions']}) — _{tc.get('cost_note', '')}_",
         "",
         "## Detalle por pregunta",
         "",
@@ -205,13 +272,79 @@ def render_markdown(summary: dict, records: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _write_outputs(out_dir: Path, records: list[dict], summary: dict) -> None:
+def _write_outputs(
+    out_dir: Path,
+    records: list[dict],
+    summary: dict,
+    traces: list[dict] | None = None,
+) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     with open(out_dir / "results.jsonl", "w", encoding="utf-8", newline="\n") as f:
         for r in records:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     (out_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
     (out_dir / "report.md").write_text(render_markdown(summary, records), encoding="utf-8", newline="\n")
+    if traces is not None:
+        with open(out_dir / "traces.jsonl", "w", encoding="utf-8", newline="\n") as f:
+            for t in traces:
+                f.write(json.dumps(t, ensure_ascii=False) + "\n")
+
+
+def _validate_resume_compatibility(
+    out_dir: Path,
+    questions: list[dict],
+    questions_path: Path,
+    mode: str,
+    provider: str | None,
+    model_configured: str | None,
+) -> dict[str, dict]:
+    """Carga resultados previos compatibles para ``--resume`` o lanza ``ValueError``."""
+    results_file = out_dir / "results.jsonl"
+    if not results_file.exists():
+        return {}
+
+    summary_file = out_dir / "summary.json"
+    if summary_file.exists():
+        prev_summary = load_json(summary_file)
+        prev_hashes = prev_summary.get("hashes") or {}
+        prev_q_hash = prev_hashes.get("questions_sha256")
+        cur_q_hash = _sha256_file(questions_path)
+        if prev_q_hash and cur_q_hash and prev_q_hash != cur_q_hash:
+            raise ValueError(
+                f"El archivo de preguntas cambió (hash previo {prev_q_hash[:12]} != actual {cur_q_hash[:12]})."
+            )
+        prev_mode = prev_summary.get("mode")
+        if prev_mode and prev_mode != mode:
+            raise ValueError(f"Modo incompatible para --resume: previo={prev_mode}, actual={mode}.")
+        prev_provider = prev_summary.get("provider")
+        if provider and prev_provider and prev_provider != provider:
+            raise ValueError(f"Proveedor incompatible para --resume: previo={prev_provider}, actual={provider}.")
+        prev_model = prev_summary.get("model_configured")
+        if model_configured and prev_model and prev_model != model_configured:
+            raise ValueError(f"Modelo incompatible para --resume: previo={prev_model}, actual={model_configured}.")
+
+    q_by_id = {q["id"]: q for q in questions}
+    existing: dict[str, dict] = {}
+    for rec in load_jsonl(results_file):
+        qid = rec.get("id")
+        if qid in q_by_id and rec.get("pregunta") != q_by_id[qid].get("pregunta"):
+            raise ValueError(f"La pregunta {qid} cambió respecto a la ejecución previa en {results_file}.")
+        if rec.get("estado") != "provider_error":
+            existing[qid] = rec
+    return existing
+
+
+def _safe_agent_config(agent: Agent | None) -> dict[str, Any]:
+    cfg = getattr(agent, "config", None) or getattr(agent, "cfg", None)
+    if cfg is None:
+        return {}
+    return {
+        "provider": getattr(cfg, "provider", None),
+        "model": getattr(cfg, "model", None),
+        "fallback_models": list(getattr(cfg, "fallback_models", ()) or ()),
+        "max_steps": getattr(cfg, "max_steps", None),
+        "timeout_s": getattr(cfg, "timeout_s", None),
+    }
 
 
 def run_evaluation(
@@ -226,6 +359,7 @@ def run_evaluation(
     model: str | None = None,
     fallback_models: str | None = None,
     provider: str | None = None,
+    save_traces: bool = False,
     agent_factory: Any = None,
 ) -> dict:
     mode = "offline" if offline_answers_path else "real"
@@ -243,11 +377,17 @@ def run_evaluation(
     pricing = load_json(pricing_path)
 
     existing: dict[str, dict] = {}
-    results_file = out_dir / "results.jsonl"
-    if resume and results_file.exists():
-        for rec in load_jsonl(results_file):
-            if rec.get("estado") != "provider_error":
-                existing[rec["id"]] = rec
+    if resume:
+        existing = _validate_resume_compatibility(
+            out_dir, questions, questions_path, mode, provider, model
+        )
+
+    existing_traces: dict[str, dict] = {}
+    traces_file = out_dir / "traces.jsonl"
+    if resume and save_traces and traces_file.exists():
+        for tr in load_jsonl(traces_file):
+            if tr.get("id") in existing:
+                existing_traces[tr["id"]] = tr
 
     offline_map: dict[str, dict] = {}
     if offline_answers_path:
@@ -265,15 +405,42 @@ def run_evaluation(
             if fallback_models is not None:
                 kw["fallback_models"] = fallback_models
             agent = Agent(load_config(**kw))
+        if resume:
+            cfg_meta = _safe_agent_config(agent)
+            _validate_resume_compatibility(
+                out_dir,
+                questions,
+                questions_path,
+                mode,
+                cfg_meta.get("provider"),
+                cfg_meta.get("model"),
+            )
+
+    agent_cfg_meta = _safe_agent_config(agent)
+    metadata = {
+        "timestamp_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "provider": agent_cfg_meta.get("provider") or provider or ("offline" if mode == "offline" else None),
+        "model_configured": agent_cfg_meta.get("model") or model or ("offline" if mode == "offline" else None),
+        "agent_config": agent_cfg_meta,
+        "hashes": {
+            "questions_sha256": _sha256_file(questions_path),
+            "criteria_sha256": _sha256_file(criteria_path),
+            "data_sha256": _data_sha256(),
+        },
+    }
 
     records: list[dict] = []
+    traces: list[dict] = []
     try:
         for q in questions:
             qid = q["id"]
             if qid in existing:
                 records.append(existing[qid])
+                if save_traces and qid in existing_traces:
+                    traces.append(existing_traces[qid])
                 continue
 
+            trace_entries: list[dict] = []
             if mode == "offline":
                 row = offline_map.get(qid)
                 if row is None:
@@ -287,6 +454,7 @@ def run_evaluation(
                         "costo_usd": None, "cost_status": "unknown_missing_tokens",
                         "llm_attempts": 0, "llm_calls": 0, "llm_failures": 0,
                         "retries": 0, "model_switches": 0, "tool_calls": 0, "tool_errors": 0,
+                        "tool_recoveries": 0, "tool_errors_by_type": {}, "error_source": None,
                     })
                     continue
                 kind = row.get("kind", "text")
@@ -308,18 +476,27 @@ def run_evaluation(
                     "model_switches": row.get("model_switches", 0),
                     "tool_calls": row.get("tool_calls", 0),
                     "tool_errors": row.get("tool_errors", 0),
+                    "tool_recoveries": row.get("tool_recoveries", 0),
+                    "tool_errors_by_type": row.get("tool_errors_by_type", {}),
+                    "error_source": row.get("error_source"),
                     "errors": row.get("errors", []),
                 }
             else:
                 assert agent is not None
                 res = agent.ask(q["pregunta"])
                 kind, answer, metrics = res.kind, res.answer, res.metrics
+                trace_entries = res.trace
 
             if kind == "error":
                 ev = {"estado": "provider_error", "valor_extraido": None,
                       "motivo": "; ".join(metrics.get("errors") or []) or answer}
+                error_source = metrics.get("error_source") or "provider"
             else:
                 ev = evaluate_item(q, answer, criteria)
+                if ev["estado"] == "extraction_error":
+                    error_source = "evaluator"
+                else:
+                    error_source = metrics.get("error_source")
 
             cost, cost_st = estimate_cost(metrics, pricing)
             rec = {
@@ -348,16 +525,35 @@ def run_evaluation(
                 "model_switches": metrics.get("model_switches", 0),
                 "tool_calls": metrics.get("tool_calls", 0),
                 "tool_errors": metrics.get("tool_errors", 0),
+                "tool_recoveries": metrics.get("tool_recoveries", 0),
+                "tool_errors_by_type": metrics.get("tool_errors_by_type", {}),
+                "error_source": error_source,
             }
             records.append(rec)
+            if save_traces:
+                traces.append({
+                    "id": qid,
+                    "pregunta": q["pregunta"],
+                    "estado": ev["estado"],
+                    "error_source": error_source,
+                    "tool_calls": metrics.get("tool_calls", 0),
+                    "tool_errors": metrics.get("tool_errors", 0),
+                    "tool_recoveries": metrics.get("tool_recoveries", 0),
+                    "trace": trace_entries,
+                })
             # Guardar incrementalmente para soportar reanudación tras interrupciones.
-            _write_outputs(out_dir, records, summarize(records, mode, questions_path))
+            _write_outputs(
+                out_dir,
+                records,
+                summarize(records, mode, questions_path, metadata=metadata),
+                traces if save_traces else None,
+            )
     finally:
         if agent is not None:
             agent.close()
 
-    summary = summarize(records, mode, questions_path)
-    _write_outputs(out_dir, records, summary)
+    summary = summarize(records, mode, questions_path, metadata=metadata)
+    _write_outputs(out_dir, records, summary, traces if save_traces else None)
     return summary
 
 
@@ -386,7 +582,15 @@ def rescore_results(
             rec["motivo"] = ev["motivo"]
         new_records.append(rec)
 
-    summary = summarize(new_records, "real", questions_path)
+    rescore_meta = {
+        "timestamp_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "hashes": {
+            "questions_sha256": _sha256_file(questions_path),
+            "criteria_sha256": _sha256_file(criteria_path),
+            "data_sha256": _data_sha256(),
+        },
+    }
+    summary = summarize(new_records, "real", questions_path, metadata=rescore_meta)
     summary["rescored_from"] = str(results_path.as_posix())
     _write_outputs(out_dir, new_records, summary)
     return summary
@@ -403,6 +607,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--offline-answers", type=Path, help="Archivo JSONL con respuestas guardadas/simuladas.")
     ap.add_argument("--out-dir", type=Path, help="Directorio de salida (por defecto eval/results/real o offline).")
     ap.add_argument("--resume", action="store_true", help="Reanuda sin repetir preguntas ya completadas.")
+    ap.add_argument("--save-traces", action="store_true", help="Guarda traces.jsonl con las trazas detalladas de herramientas.")
     ap.add_argument("--provider", choices=["gemini", "openrouter"], help="Proveedor LLM.")
     ap.add_argument("--model", help="Modelo principal.")
     ap.add_argument("--fallback-models", help="Fallbacks separados por coma.")
@@ -439,9 +644,13 @@ def main(argv: list[str] | None = None) -> int:
             model=args.model,
             fallback_models=args.fallback_models,
             provider=args.provider,
+            save_traces=args.save_traces,
         )
     except ConfigError as e:
         print(f"Error de configuración: {e}", file=sys.stderr)
+        return 2
+    except ValueError as e:
+        print(f"Error de validación (--resume): {e}", file=sys.stderr)
         return 2
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
