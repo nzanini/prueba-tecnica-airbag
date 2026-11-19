@@ -149,10 +149,26 @@ def test_validacion_json_recomendaciones(db_con):
     r_warn = evaluate_recommendations_json(sin_ventana, db_con)
     assert r_warn["format_ok"] and not r_warn["quality_ok"] and r_warn["warnings"]
 
-    # Markdown o ID inválido -> formato inválido
+    # Markdown o JSON mal formado -> formato inválido; ID inexistente -> formato válido pero branches_ok=False
     assert not evaluate_recommendations_json("```json\n" + ok_json + "\n```", db_con)["format_ok"]
     bad_id = json.dumps([{"sucursal_id": "S999", "motivo": "m", "evidencia": "e", "accion_sugerida": "a"}])
-    assert not evaluate_recommendations_json(bad_id, db_con)["format_ok"]
+    r_bad_id = evaluate_recommendations_json(bad_id, db_con)
+    assert r_bad_id["format_ok"] and not r_bad_id["branches_ok"] and not r_bad_id["quality_ok"]
+
+    # Cifra inventada en sucursal existente -> format_ok=True, branches_ok=True, pero evidence_verified=False y quality_ok=False
+    inventada = json.dumps([
+        {"sucursal_id": "S034", "motivo": "Tasa elevada.", "evidencia": "9999 quejas inventadas", "accion_sugerida": "Auditar."}
+    ], ensure_ascii=False)
+    r_inv = evaluate_recommendations_json(inventada, db_con)
+    assert r_inv["format_ok"] and r_inv["branches_ok"] and not r_inv["evidence_verified"] and not r_inv["quality_ok"]
+    assert r_inv["evidence_details"][0]["status"] == "contradictory"
+
+    # Evidencia puramente cualitativa (sin cifras) -> no se marca como verificada
+    sin_cifras = json.dumps([
+        {"sucursal_id": "S034", "motivo": "Atención requerida.", "evidencia": "Muchos reclamos recientes.", "accion_sugerida": "Auditar."}
+    ], ensure_ascii=False)
+    r_sc = evaluate_recommendations_json(sin_cifras, db_con)
+    assert r_sc["format_ok"] and r_sc["branches_ok"] and not r_sc["evidence_verified"] and not r_sc["quality_ok"]
 
 
 # -------------------------------------------------- runner offline, resume y métricas

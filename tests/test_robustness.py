@@ -44,11 +44,18 @@ class _SeqBackend:
 
 # ------------------------------------------------ 1. Contrato JSON obligatorio en recomendaciones
 @pytest.mark.parametrize("q,esperado", [
+    ("¿Qué sucursales debería visitar?", True),
     ("¿Qué sucursales debería visitar esta semana?", True),
-    ("¿A qué tiendas conviene ir a revisar por sus quejas?", True),
+    ("¿Qué locales conviene inspeccionar?", True),
+    ("¿Cuáles requieren atención prioritaria?", True),
+    ("Recomendame tres tiendas para revisar.", True),
+    ("¿Dónde debería concentrar mis visitas esta semana?", True),
+    ("¿A qué tiendas me recomendás ir a revisar?", True),
     ("Priorizá los locales que necesitan atención o visita", True),
     ("¿Cuántas sucursales tiene la región Costa?", False),
     ("¿Cuál fue la tasa de quejas de la sucursal S012?", False),
+    ("¿Cuáles son las 3 sucursales con más quejas por cada 1,000 pedidos en febrero de 2026?", False),
+    ("¿Qué sucursal tuvo más pedidos en la semana del 2 de marzo de 2026?", False),
 ])
 def test_detector_solicitud_recomendaciones(q, esperado):
     assert is_recommendation_request(q) is esperado
@@ -83,7 +90,21 @@ def test_recomendacion_narrativa_persistente_devuelve_error(db_path):
     ag = Agent(Config(api_key="k"), backend=_SeqBackend(steps), db_path=db_path)
     try:
         res = ag.ask("¿Qué sucursales debería visitar?")
-        assert res.kind == "error" and "array JSON" in res.answer
+        assert res.kind == "error" and res.answer == "[]" and res.data == []
+        assert any("array JSON" in e for e in res.metrics["errors"])
+    finally:
+        ag.close()
+
+
+def test_recomendacion_agotamiento_o_error_mantiene_contrato_json(db_path):
+    ag = Agent(Config(api_key="k", max_llm_calls=2), backend=_SeqBackend([
+        Turn(calls=[ToolCall("run_sql", {"query": "SELECT sucursal_id, quejas FROM v_metricas_sucursal LIMIT 2"})], content={}),
+        Turn(calls=[ToolCall("run_sql", {"query": "SELECT sucursal_id, quejas FROM v_metricas_sucursal LIMIT 2"})], content={}),
+    ]), db_path=db_path)
+    try:
+        res = ag.ask("¿Dónde debería concentrar mis visitas esta semana?")
+        assert res.kind == "error" and res.answer == "[]" and json.loads(res.answer) == []
+        assert res.metrics["errors"]
     finally:
         ag.close()
 
@@ -104,10 +125,20 @@ def test_evidencia_asociada_por_sucursal_y_porcentajes_derivados():
     _, warns = validate_recommendations(ok_rec, {"S012", "S099"}, corpus, ev_records)
     assert warns == []
 
-    # Cifra de OTRA sucursal (7777 no existe, 88 es de S099) -> advertencia de no verificable para S012
+    # Cifra de OTRA sucursal (88 es de S099) -> rechazada estrictamente para S012
     ajena = [{"sucursal_id": "S012", "motivo": "m", "evidencia": "88 incidentes observados", "accion_sugerida": "a"}]
-    _, warns2 = validate_recommendations(ajena, {"S012", "S099"}, corpus, ev_records)
-    assert warns2 and "no verificable" in warns2[0]
+    with pytest.raises(RecommendationError) as e_aj:
+        validate_recommendations(ajena, {"S012", "S099"}, corpus, ev_records)
+    assert "no respaldadas" in str(e_aj.value)
+
+    # No mezclar cifras entre distintas filas/semanas para fabricar tasas falsas
+    multi_sem = [
+        {"columns": ["sucursal_id", "quejas", "pedidos_validos"], "rows": [["S012", 10, 2000], ["S012", 2, 500]]},
+    ]
+    # 10 / 500 * 1000 = 20.0 (mezcla fila 1 con fila 2) -> debe rechazarse
+    mezcla = [{"sucursal_id": "S012", "motivo": "m", "evidencia": "tasa de 20.0", "accion_sugerida": "a"}]
+    with pytest.raises(RecommendationError):
+        validate_recommendations(mezcla, {"S012"}, json.dumps(multi_sem), multi_sem)
 
     # Contradicción demostrable (afirma 40 quejas cuando S012 consultó 15) -> error bloqueante
     contra = [{"sucursal_id": "S012", "motivo": "m", "evidencia": "40 quejas registradas", "accion_sugerida": "a"}]
@@ -145,11 +176,12 @@ def test_validador_distingue_tasas_fechas_porcentajes_y_contradicciones():
         validate_recommendations(bad_dias, {"S014"}, corpus, ev_records)
     assert "contradictoria para dias" in str(e2.value)
 
-    # Cifra inventada no vinculada a métrica conocida -> warning de no verificable
+    # Cifra inventada no vinculada a métrica conocida -> rechazada estrictamente
     inv = [{"sucursal_id": "S014", "motivo": "m",
             "evidencia": "12 quejas y puntaje interno de 777", "accion_sugerida": "a"}]
-    _, warns_inv = validate_recommendations(inv, {"S014"}, corpus, ev_records)
-    assert warns_inv and "777.0" in warns_inv[0]
+    with pytest.raises(RecommendationError) as e_inv:
+        validate_recommendations(inv, {"S014"}, corpus, ev_records)
+    assert "no respaldadas" in str(e_inv.value)
 
     # Evidencia inexistente (sucursal no consultada) -> error
     with pytest.raises(RecommendationError):

@@ -92,9 +92,10 @@ def open_readonly(db_path: Path | str | None = None) -> duckdb.DuckDBPyConnectio
 
 
 # --------------------------------------------------------------------- validación de recomendaciones
-def _extract_branch_evidence(evidence_records: list[dict], sid: str) -> tuple[list[float], dict[str, list[float]]]:
-    """Extrae cifras y métricas clave asociadas a ``sid`` desde los resultados de herramientas."""
+def _extract_branch_evidence(evidence_records: list[dict], sid: str) -> tuple[list[float], list[list[float]], dict[str, list[float]]]:
+    """Extrae cifras, grupos coherentes por fila/ítem y métricas clave asociadas a ``sid``."""
     nums: list[float] = []
+    row_groups: list[list[float]] = []
     metrics: dict[str, list[float]] = {"quejas": [], "pedidos": [], "tasa": [], "dias": []}
 
     def _add_metric(col: str, val: Any) -> None:
@@ -119,32 +120,53 @@ def _extract_branch_evidence(evidence_records: list[dict], sid: str) -> tuple[li
                     continue
                 if sid_idx is None and not any(str(v).strip().upper() == sid for v in row):
                     continue
+                grp: list[float] = []
                 for col, val in zip(cols, row):
                     if isinstance(val, (int, float)) and not isinstance(val, bool):
-                        nums.append(float(val))
+                        fval = float(val)
+                        nums.append(fval)
+                        grp.append(fval)
                         _add_metric(col, val)
+                if grp:
+                    row_groups.append(grp)
         elif rec.get("sucursal_id") == sid or (isinstance(rec.get("sucursal"), dict) and rec["sucursal"].get("sucursal_id") == sid):
-            # get_branch_summary o get_complaint_comments
+            base_grp: list[float] = []
             for src in (rec, rec.get("sucursal") or {}):
                 if isinstance(src, dict):
                     for k, v in src.items():
                         if isinstance(v, (int, float)) and not isinstance(v, bool):
-                            nums.append(float(v))
+                            fval = float(v)
+                            nums.append(fval)
+                            base_grp.append(fval)
                             _add_metric(k, v)
+            if base_grp:
+                row_groups.append(base_grp)
+            total_q = rec.get("total_quejas") or (rec.get("sucursal") or {}).get("quejas")
             for lista_k in ("por_categoria", "quejas_por_categoria", "semanas"):
                 for item in rec.get(lista_k) or []:
                     if isinstance(item, dict):
+                        igrp: list[float] = [float(total_q)] if isinstance(total_q, (int, float)) and not isinstance(total_q, bool) else []
                         for k, v in item.items():
                             if isinstance(v, (int, float)) and not isinstance(v, bool):
-                                nums.append(float(v))
+                                fval = float(v)
+                                nums.append(fval)
+                                igrp.append(fval)
                                 _add_metric(k, v)
-    return nums, metrics
+                        if igrp:
+                            row_groups.append(igrp)
+    return nums, row_groups, metrics
 
 
 def _strip_dates_and_scales(texto: str) -> str:
-    """Elimina fechas ISO/DD-MM-YYYY y escalas ('por cada 1.000') antes de extraer cifras."""
+    """Elimina fechas ISO/DD-MM-YYYY/en español y escalas ('por cada 1.000') antes de extraer cifras."""
     t = re.sub(r"\b\d{4}-\d{2}-\d{2}\b", " ", texto)
     t = re.sub(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", " ", t)
+    t = re.sub(
+        r"\b\d{1,2}\s+de\s+(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)(?:\s+de\s+\d{4})?\b",
+        " ",
+        t,
+        flags=re.IGNORECASE,
+    )
     t = re.sub(r"\b(?:por\s+cada|por|cada)\s+1[.,]000\b", " ", t, flags=re.IGNORECASE)
     return t
 
@@ -208,25 +230,29 @@ def _check_contradictions(sid: str, evidencia: str, metrics: dict[str, list[floa
                 )
 
 
-def _respaldado_ext(n: float, corpus_nums: list[float], is_percent: bool = False) -> bool:
-    if _respaldado(n, corpus_nums):
+def _respaldado_ext(n: float, corpus_nums: list[float], is_percent: bool = False,
+                    row_groups: list[list[float]] | None = None) -> bool:
+    if _respaldado(n, corpus_nums, is_percent=is_percent):
         return True
-    # Cálculos derivados sencillos: porcentajes (100 * a / b) y tasas por 1.000 (1000 * a / b)
-    for b in corpus_nums:
-        if b <= 0:
-            continue
-        for a in corpus_nums:
-            if a < 0:
+    # Cálculos derivados solo dentro de un mismo grupo coherente (misma fila/ítem de esa sucursal)
+    groups = row_groups if row_groups is not None else [corpus_nums]
+    for grp in groups:
+        for b in grp:
+            if b <= 0:
                 continue
-            if is_percent and a <= b and abs((100.0 * a / b) - n) <= 0.15:
-                return True
-            if not is_percent and abs((1000.0 * a / b) - n) <= 0.06:
-                return True
+            for a in grp:
+                if a < 0:
+                    continue
+                if is_percent and a <= b and abs((100.0 * a / b) - n) <= 0.15:
+                    return True
+                if not is_percent and abs((1000.0 * a / b) - n) <= 0.06:
+                    return True
     return False
 
 
 def validate_recommendations(items: Any, valid_ids: set[str], corpus: str | None = None,
-                             evidence_records: list[dict] | None = None) -> tuple[list[dict], list[str]]:
+                             evidence_records: list[dict] | None = None,
+                             strict_evidence: bool = True) -> tuple[list[dict], list[str]]:
     """Valida estructura y contenido. Devuelve (lista limpia, advertencias). Lanza RecommendationError."""
     if not isinstance(items, list) or not items:
         raise RecommendationError("Debe ser un array JSON no vacío.")
@@ -251,18 +277,29 @@ def validate_recommendations(items: Any, valid_ids: set[str], corpus: str | None
                 f"Elemento {i}: no hay datos consultados de '{sid}'. Consultá la evidencia con SQL antes de recomendarla.")
 
         evidencia = it["evidencia"].strip()
-        branch_nums, branch_metrics = ([], {})
-        if evidence_records:
-            branch_nums, branch_metrics = _extract_branch_evidence(evidence_records, sid)
+        branch_nums, row_groups, branch_metrics = ([], [], {})
+        if evidence_records is not None:
+            branch_nums, row_groups, branch_metrics = _extract_branch_evidence(evidence_records, sid)
+            if not branch_nums:
+                raise RecommendationError(
+                    f"{sid}: no se consultaron métricas numéricas para esta sucursal; consultá sus datos con SQL."
+                )
             _check_contradictions(sid, evidencia, branch_metrics)
 
-        ref_nums = branch_nums if branch_nums else corpus_nums
         if corpus is not None or evidence_records is not None:
+            ref_nums = branch_nums if evidence_records is not None else corpus_nums
+            groups = row_groups if evidence_records is not None else None
             ev_clean = _strip_dates_and_scales(evidencia)
             pct_vals = {float(v) for m in re.finditer(r"(\d[\d.,]*)\s*%", ev_clean) for v in _numeros(m.group(1))}
-            faltan = [n for n in _numeros(ev_clean) if not _respaldado_ext(n, ref_nums, is_percent=(n in pct_vals))]
+            faltan = [
+                n for n in _numeros(ev_clean)
+                if not _respaldado_ext(n, ref_nums, is_percent=(n in pct_vals), row_groups=groups)
+            ]
             if faltan:
-                warnings.append(f"{sid}: evidencia no verificable en las consultas de esta sucursal: {faltan[:6]}")
+                msg = f"{sid}: evidencia con cifras no respaldadas en las consultas de esta sucursal: {faltan[:6]}"
+                if strict_evidence:
+                    raise RecommendationError(msg)
+                warnings.append(msg)
         limpio.append({k: it[k].strip() for k in REC_KEYS})
     return limpio, warnings
 
@@ -286,11 +323,14 @@ def _numeros(texto: str) -> list[float]:
     return out
 
 
-def _respaldado(n: float, corpus_nums: list[float]) -> bool:
+def _respaldado(n: float, corpus_nums: list[float], is_percent: bool = False) -> bool:
     if n in (0.0, 1.0) or (2020 <= n <= 2030):  # tokens triviales y años
         return True
     tol = 0.0051 if abs(n - round(n)) > 1e-9 else 0.5
-    return any(abs(c - n) <= max(tol, abs(n) * 0.0006) or abs(c * 100 - n) <= 0.51 for c in corpus_nums)
+    return any(
+        abs(c - n) <= max(tol, abs(n) * 0.0006) or (is_percent and 0.0 < c <= 1.0 and abs(c * 100 - n) <= 0.51)
+        for c in corpus_nums
+    )
 
 
 def parse_recommendations_text(text: str) -> list | None:

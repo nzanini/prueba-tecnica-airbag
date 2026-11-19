@@ -57,17 +57,28 @@ def is_non_spanish_query(question: str) -> bool:
     return hits >= 2 or (len(tokens) <= 3 and hits >= 1 and any(t in {"hello", "hi", "english"} for t in tokens))
 
 
-_REC_TARGET_RE = re.compile(r"\bsucursal(?:es)?\b|\btiendas?\b|\blocales?\b", re.IGNORECASE)
-_REC_INTENT_RE = re.compile(
-    r"\b(?:visitar|visita|visito|recomiend\w*|recomendaci[oó]n(?:es)?|prioriz\w*|inspeccion\w*|revisar|atender|ir\s+a\s+ver|conviene\s+ir|deber[ií]a\s+ir)\b",
+_REC_TARGET_RE = re.compile(
+    r"\bsucursal(?:es)?\b|\btiendas?\b|\blocales?\b|\bcu[aá]les\b|\bd[oó]nde\b",
     re.IGNORECASE,
 )
+_REC_INTENT_RE = re.compile(
+    r"\b(?:visitar|visitas|visita|visito|inspeccion\w*|recom(?:iend|end)\w*|recomendaci[oó]n(?:es)?|"
+    r"atenci[oó]n\s+prioritaria|requieren\s+atenci[oó]n|necesitan\s+atenci[oó]n|"
+    r"concentrar\s+(?:mis\s+)?visitas|prioriz\w*\s+(?:para\s+)?(?:visitar|visita|revisar|atender)|"
+    r"conviene\s+(?:ir|revisar|visitar|inspeccionar)|deber[ií]a\s+(?:visitar|ir|inspeccionar))\b",
+    re.IGNORECASE,
+)
+_DESCRIPTIVE_RE = re.compile(r"\bcu[aá]nt[oa]s\b|\btasa\b|\bpromedio\b|\bm[aá]s\s+(?:pedidos|quejas)\b", re.IGNORECASE)
 
 
 def is_recommendation_request(question: str) -> bool:
     """Detecta solicitudes de recomendación de sucursales a visitar/priorizar sin LLM adicional."""
     q = (question or "").strip()
-    return bool(_REC_TARGET_RE.search(q) and _REC_INTENT_RE.search(q))
+    if not _REC_INTENT_RE.search(q):
+        return False
+    if _DESCRIPTIVE_RE.search(q) and not re.search(r"\b(?:visitar|visitas|inspeccion\w*|recomiend\w*)\b", q, re.IGNORECASE):
+        return False
+    return bool(_REC_TARGET_RE.search(q))
 
 
 @dataclass
@@ -251,7 +262,11 @@ class Agent:
 
         if error:
             m["errors"].append(error)
-            kind, answer = "error", f"No pude completar la consulta: {error}"
+            kind = "error"
+            if rec_required:
+                data, answer = [], "[]"
+            else:
+                answer = f"No pude completar la consulta: {error}"
         m["fallback_used"] = any(mod != self.config.model for mod in m["models_used"]) or m["model_switches"] > 0
         m["tool_calls"], m["tool_errors"] = tb.calls, tb.errors
         m["warnings"] = list(tb.warnings)
@@ -342,6 +357,8 @@ def main(argv: list[str] | None = None) -> int:
             res = agent.ask(q)
             print(res.answer, flush=True)
             _diag(res, args.verbose)
+            if res.kind == "error" and not args.verbose and res.answer == "[]":
+                print(f"[error] {'; '.join(res.metrics.get('errors') or [])}", file=sys.stderr)
             if args.log_file:
                 append_run_log(args.log_file, res)
             if res.kind == "error":

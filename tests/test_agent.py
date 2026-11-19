@@ -181,9 +181,11 @@ def test_recomendaciones_invalidas(items):
         validate_recommendations(items, VALID, "S001 tasa 3.5")
 
 
-def test_cifras_no_respaldadas_generan_advertencia():
-    _, warns = validate_recommendations([{**REC, "evidencia": "Tasa 9.87 por 1000"}], VALID, "S001 tasa 3.5")
-    assert warns and "9.87" in warns[0]
+def test_cifras_no_respaldadas_se_rechazan():
+    from app.tools import RecommendationError
+    with pytest.raises(RecommendationError) as e:
+        validate_recommendations([{**REC, "evidencia": "Tasa 9.87 por 1000"}], VALID, "S001 tasa 3.5")
+    assert "no respaldadas" in str(e.value)
 
 
 # ------------------------------------------------- ciclo del agente con proveedor simulado
@@ -374,7 +376,8 @@ def test_json_invalido_en_texto_reintenta_una_vez_y_luego_falla(hacer_agente):
     mal = Turn(text='[{"sucursal_id": "S001"}]', content={})
     a = hacer_agente([sql(CONSULTA_RECS), mal, mal])
     res = a.ask("¿Qué sucursales visitar?")
-    assert res.kind == "error" and "no válidas" in res.answer
+    assert res.kind == "error" and res.answer == "[]" and json.loads(res.answer) == []
+    assert any("no válidas" in e for e in res.metrics["errors"])
 
 
 # --------------------------------------------------------------------------- uso programático / CLI

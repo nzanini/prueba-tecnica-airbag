@@ -6,7 +6,8 @@ import re
 import unicodedata
 from typing import Any
 
-from app.tools import REC_KEYS, RecommendationError, validate_recommendations
+from app.tools import (REC_KEYS, RecommendationError, _numeros, _respaldado_ext,
+                       _strip_dates_and_scales, validate_recommendations)
 
 
 def normalize_text(text: str) -> str:
@@ -271,40 +272,166 @@ def evaluate_item(item: dict, answer_text: str, criteria_map: dict[str, dict] | 
     return {"estado": "not_evaluable", "valor_extraido": None, "motivo": f"Tipo no soportado: {tipo}"}
 
 
+def _db_branch_groups(db_con: Any, sid: str) -> tuple[list[float], list[list[float]], dict[str, list[float]]]:
+    """Obtiene grupos numéricos coherentes por ventana/categoría para ``sid`` desde DuckDB."""
+    all_nums: list[float] = []
+    groups: list[list[float]] = []
+    metrics: dict[str, list[float]] = {"quejas": [], "pedidos": [], "tasa": [], "dias": []}
+
+    def _push(grp: list[float], q=None, p=None, t=None, d=None) -> None:
+        clean = [float(x) for x in grp if isinstance(x, (int, float)) and not isinstance(x, bool)]
+        if clean:
+            groups.append(clean)
+            all_nums.extend(clean)
+        if isinstance(q, (int, float)):
+            metrics["quejas"].append(float(q))
+        if isinstance(p, (int, float)):
+            metrics["pedidos"].append(float(p))
+        if isinstance(t, (int, float)):
+            metrics["tasa"].append(float(t))
+        if isinstance(d, (int, float)):
+            metrics["dias"].append(float(d))
+
+    for row in db_con.execute(
+        "SELECT quejas, pedidos_validos, tasa_quejas_x1000, dias_operativos, pedidos_por_dia_operativo "
+        "FROM v_metricas_sucursal WHERE sucursal_id = ?", [sid]
+    ).fetchall():
+        _push(list(row), q=row[0], p=row[1], t=row[2], d=row[3])
+    for row in db_con.execute(
+        "SELECT quejas, pedidos_validos, tasa_quejas_x1000, dias_operativos "
+        "FROM v_metricas_semana_sucursal WHERE sucursal_id = ?", [sid]
+    ).fetchall():
+        _push(list(row), q=row[0], p=row[1], t=row[2], d=row[3])
+    for row in db_con.execute(
+        "SELECT sum(quejas), sum(pedidos_validos), 1000.0*sum(quejas)/nullif(sum(pedidos_validos),0), count(*) "
+        "FROM v_metricas_dia WHERE sucursal_id = ? GROUP BY mes", [sid]
+    ).fetchall():
+        _push(list(row), q=row[0], p=row[1], t=row[2], d=row[3])
+    tot_q = metrics["quejas"][0] if metrics["quejas"] else None
+    for row in db_con.execute(
+        "SELECT count(*) FROM quejas WHERE sucursal_id = ? GROUP BY categoria", [sid]
+    ).fetchall():
+        _push([row[0], tot_q] if tot_q is not None else [row[0]], q=row[0])
+    # Categorías en la última semana y último mes
+    for row in db_con.execute(
+        "SELECT c.n, w.quejas FROM (SELECT categoria, count(*) n FROM quejas WHERE sucursal_id = ? AND fecha >= DATE '2026-03-23' GROUP BY 1) c, "
+        "(SELECT quejas FROM v_metricas_semana_sucursal WHERE sucursal_id = ? AND semana_inicio = DATE '2026-03-23') w",
+        [sid, sid],
+    ).fetchall():
+        _push(list(row), q=row[0])
+    return all_nums, groups, metrics
+
+
 def evaluate_recommendations_json(answer_text: str, db_con: Any, corpus: str | None = None) -> dict:
-    """Evalúa formato y criterios analíticos básicos de una respuesta JSON de recomendaciones."""
+    """Evalúa por separado formato, existencia de sucursales, evidencia contra DuckDB y calidad."""
     raw = (answer_text or "").lstrip("\ufeff").strip()
+    base_err = {
+        "format_ok": False, "branches_ok": False, "evidence_verified": False,
+        "quality_ok": False, "count": 0, "keys_ok": False, "evidence_details": [],
+    }
     if raw.startswith("```") or not raw.startswith("["):
-        return {"format_ok": False, "quality_ok": False, "count": 0,
-                "errors": ["La salida no es exclusivamente un array JSON sin texto/Markdown."], "warnings": []}
+        return {**base_err, "errors": ["La salida no es exclusivamente un array JSON sin texto/Markdown."], "warnings": []}
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as e:
-        return {"format_ok": False, "quality_ok": False, "count": 0,
-                "errors": [f"JSON inválido: {e.msg}"], "warnings": []}
+        return {**base_err, "errors": [f"JSON inválido: {e.msg}"], "warnings": []}
 
     valid_ids = {r[0] for r in db_con.execute("SELECT sucursal_id FROM sucursales").fetchall()}
     try:
-        clean, warnings = validate_recommendations(parsed, valid_ids, corpus)
+        # Primero validamos estrictamente estructura y existencia de sucursales sin exigir corpus
+        clean, _ = validate_recommendations(parsed, valid_ids, corpus=None, strict_evidence=False)
     except RecommendationError as e:
-        return {"format_ok": False, "quality_ok": False, "count": len(parsed) if isinstance(parsed, list) else 0,
-                "errors": [str(e)], "warnings": []}
+        cnt = len(parsed) if isinstance(parsed, list) else 0
+        msg = str(e)
+        is_branch_err = "no existe" in msg or "repetida" in msg
+        return {
+            **base_err,
+            "format_ok": is_branch_err,
+            "count": cnt,
+            "errors": [msg],
+            "warnings": [],
+        }
 
     nuevas = {r[0]: r[1] for r in db_con.execute(
         "SELECT sucursal_id, dias_operativos FROM v_metricas_sucursal WHERE dias_operativos < 84").fetchall()}
-    quality_warnings = list(warnings)
+    quality_warnings: list[str] = []
+    evidence_details: list[dict] = []
+    all_verified = True
+
     for rec in clean:
         sid = rec["sucursal_id"]
+        ev_text = rec["evidencia"]
+        ev_clean = _strip_dates_and_scales(ev_text)
+        ev_nums = _numeros(ev_clean)
+        pct_vals = {float(v) for m in re.finditer(r"(\d[\d.,]*)\s*%", ev_clean) for v in _numeros(m.group(1))}
+
+        db_nums, db_groups, db_metrics = _db_branch_groups(db_con, sid)
+        unverified = [
+            n for n in ev_nums
+            if not _respaldado_ext(n, db_nums, is_percent=(n in pct_vals), row_groups=db_groups)
+        ]
+
+        # Verificar contradicciones contra métricas reales de DuckDB para esa sucursal
+        contradictions: list[str] = []
+        for pat, mkey, tol in (
+            (r"(\d[\d.,]*)\s*(%?)\s+quejas?\b", "quejas", 0.5),
+            (r"(\d[\d.,]*)\s+pedidos(?:\s+validos|\s+válidos)?\b", "pedidos", 0.5),
+            (r"\btasa(?:\s+de\s+quejas)?(?:\s+semanal)?\s*(?:de|:|=)?\s*(\d[\d.,]*)", "tasa", 0.06),
+            (r"(\d[\d.,]*)\s+d[ií]as\s+operativos\b", "dias", 0.5),
+        ):
+            vals = db_metrics.get(mkey) or []
+            if not vals:
+                continue
+            for m in re.finditer(pat, ev_text, flags=re.IGNORECASE):
+                if mkey == "quejas" and m.lastindex and m.lastindex >= 2 and m.group(2) == "%":
+                    continue
+                prefix = ev_text[max(0, m.start() - 28):m.start()].lower()
+                if mkey == "quejas" and re.search(r"\btasa\b|\bporcentaje\b", prefix):
+                    continue
+                if mkey == "quejas" and re.match(r"\s+por\s+(?:cada\s+)?1[.,]?000\b", ev_text[m.end():m.end() + 25].lower()):
+                    continue
+                if mkey == "pedidos" and any(w in prefix[-12:] for w in ("cada ", "por ")):
+                    continue
+                p_nums = _numeros(m.group(1))
+                if p_nums and not any(abs(v - p_nums[0]) <= tol for v in vals):
+                    contradictions.append(f"{mkey}={p_nums[0]}")
+
+        if contradictions:
+            status = "contradictory"
+            all_verified = False
+            quality_warnings.append(f"{sid}: evidencia contradictoria con DuckDB ({', '.join(contradictions)}).")
+        elif not ev_nums:
+            status = "unverifiable"
+            all_verified = False
+            quality_warnings.append(f"{sid}: evidencia sin cifras verificables.")
+        elif unverified:
+            status = "unverifiable"
+            all_verified = False
+            quality_warnings.append(f"{sid}: cifras no verificadas en DuckDB: {unverified[:6]}.")
+        else:
+            status = "verified"
+
+        evidence_details.append({
+            "sucursal_id": sid,
+            "status": status,
+            "unverified_numbers": unverified,
+            "contradictions": contradictions,
+        })
+
         if sid in nuevas:
             texto = normalize_text(rec["motivo"] + " " + rec["evidencia"])
             if not any(k in texto for k in ("dia", "nueva", "apertura", "reciente", "operativ", str(nuevas[sid]))):
                 quality_warnings.append(
                     f"{sid}: sucursal nueva ({nuevas[sid]} días operativos) recomendada sin mencionar su ventana parcial.")
+
     return {
         "format_ok": True,
-        "quality_ok": len(quality_warnings) == 0,
+        "branches_ok": True,
+        "evidence_verified": all_verified,
+        "quality_ok": all_verified and len(quality_warnings) == 0,
         "count": len(clean),
         "keys_ok": all(set(r) == set(REC_KEYS) for r in clean),
+        "evidence_details": evidence_details,
         "errors": [],
         "warnings": quality_warnings,
     }
