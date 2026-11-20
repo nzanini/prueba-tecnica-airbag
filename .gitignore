@@ -1,6 +1,7 @@
 # Entorno virtual, secretos y cachés
 .env
 .venv/
+.venv_verificacion/
 venv/
 env/
 __pycache__/
