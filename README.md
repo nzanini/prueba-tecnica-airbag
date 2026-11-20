@@ -71,11 +71,11 @@ Guía completa paso a paso (Windows, Linux/macOS, `--resume`, `--rescore` y diag
 | Propias V3 / V3 rescored (`real_propias_v3*`) | **7/8** → **8/8** (`--rescore` P16)** | 8.767s | US\$0.05762 (~US\$0.0072/preg.) |
 | Robustez V2 (`real_robustez_v2`) | **7/7 (100%)** | 10.554s | US\$0.060631 (~US\$0.0087/preg.) |
 
-*\*Estimaciones históricas sobre tarifas de OpenRouter API al 2026-11-18 (US\$0.825 / 1M entrada, US\$4.125 / 1M salida). No representan facturación oficial ni garantizan igual desempeño en preguntas nuevas. **El rescoring de P16 corrigió un falso negativo del evaluador sin reejecutar el modelo.*
+*\*Estimaciones históricas registradas en `eval/pricing.json` según tarifas de OpenRouter API al 2026-11-18 (US\$0.825 / 1M entrada, US\$4.125 / 1M salida; referencia oficial en [OpenRouter](https://openrouter.ai/google/gemini-3.8-flash)), sujetas a variación. No representan facturación oficial ni garantizan igual desempeño en preguntas nuevas. **El rescoring de P16 corrigió un falso negativo del evaluador sin reejecutar el modelo.*
 
 Detalle completo en [`docs/evaluation_summary.md`](docs/evaluation_summary.md), [`docs/robustness_analysis.md`](docs/robustness_analysis.md) y [`docs/lessons_learned.md`](docs/lessons_learned.md).
 
 ## Limitaciones y mejoras futuras
 
-- **Limitaciones:** el scoring textual determinista depende de reglas configuradas (`eval/text_criteria.json`, `eval/robustness_criteria.json`); el validador de recomendaciones verifica cifras simples y contradicciones directas, no inferencias estadísticas complejas; y los rankings por tasa pueden priorizar sucursales nuevas con pocos pedidos si no se fija volumen mínimo.
-- **Mejoras futuras:** comparación A/B controlada frente a otros modelos, ponderación/umbral mínimo de pedidos en recomendaciones, evaluación semántica opcional y exposición de `answer_question()` mediante API HTTP o interfaz web ligera.
+- **Limitaciones:** las consultas complejas pueden superar los 40 segundos por múltiples llamadas al LLM (se priorizó precisión y trazabilidad sobre velocidad, ya que la consigna no fija límite de latencia); el scoring textual determinista depende de reglas configuradas (`eval/text_criteria.json`, `eval/robustness_criteria.json`); el validador de recomendaciones verifica cifras simples y contradicciones directas; y los rankings por tasa pueden priorizar sucursales nuevas con pocos pedidos sin volumen mínimo.
+- **Mejoras futuras:** optimización de llamadas y contexto, comparación experimental de modelos según precisión, latencia y costo, ponderación/umbral mínimo de pedidos en recomendaciones, evaluación semántica opcional y exposición de `answer_question()` vía API HTTP o interfaz web ligera.
