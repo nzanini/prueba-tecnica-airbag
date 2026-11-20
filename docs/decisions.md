@@ -45,6 +45,7 @@ Las reglas no incluyen respuestas de `eval/preguntas_ejemplo.jsonl`; esas respue
 
 | # | Decisión | Razón |
 |---|---|---|
+| G0 | Enfoque agéntico con autonomía controlada sobre LLM + DuckDB en lugar de ML clásico supervisado | La consigna pide responder preguntas sobre datos existentes, no entrenar modelos predictivos; el modelo interpreta intención, elige herramientas validadas, decide si iterar y verifica restricciones antes de responder (ver `docs/architecture.md`). |
 | G1 | SDK oficial `google-genai` con `AutomaticFunctionCallingConfig(disable=True)` y modelo por defecto `gemini-3.8-flash` configurable vía `GEMINI_MODEL` | Control explícito del ciclo de herramientas, límite de llamadas, captura de tokens (`usage_metadata`), reintentos y errores sin depender de LangChain. |
 | G2 | Separación entre proveedor (`app/llm.py`), guardia SQL (`app/sql_guard.py`), herramientas (`app/tools.py`) y orquestador (`app/agent.py`) | Facilita testear offline con mocks y cambiar de modelo o proveedor sin tocar las herramientas ni las reglas de negocio. |
 | G3 | Seguridad SQL en dos capas: validación estructural del AST con `sqlglot` + conexión DuckDB de solo lectura (`enable_external_access=false`, `lock_configuration=true`), límite de 100 filas y timeout de 15 s | No basta verificar que la consulta empiece con `SELECT`; se bloquean mutaciones, múltiples sentencias, acceso a archivos/entorno, tablas no autorizadas y funciones peligrosas. |

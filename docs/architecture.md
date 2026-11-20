@@ -7,6 +7,22 @@
 - **Por qué herramientas SQL y no RAG tradicional:** las preguntas del gerente son principalmente agregaciones, tasas, rankings y filtros temporales sobre datos tabulares. Un RAG sobre fragmentos de texto no puede sumar pedidos ni calcular tasas exactas; el SQL sobre DuckDB garantiza cifras reproducibles.
 - **Por qué no entrenamos un modelo:** la tarea no requiere ajustar pesos ni aprender un dominio nuevo de lenguaje; la exactitud depende de consultar la base actualizada en tiempo de inferencia mediante *function calling*.
 
+### Enfoque: sistema agéntico con LLM vs. ML clásico
+- **Por qué no ML clásico:** la consigna no pide entrenar un modelo predictivo (no hay regresión, clasificación, *forecasting* ni entrenamiento supervisado), sino responder preguntas en lenguaje natural sobre datos existentes. El valor está en la **interpretación de preguntas, uso de herramientas y *grounding* en datos**.
+- **Qué lo hace agéntico (autonomía limitada y controlada):** no es solo un chatbot con LLM. El modelo interpreta la intención, decide qué herramienta usar, construye y ejecuta consultas, observa resultados, evalúa si necesita nuevas consultas, valida restricciones (por ejemplo, el contrato JSON en recomendaciones) y recién entonces responde. Esa autonomía es acotada: solo usa herramientas permitidas, SQL validado por AST en solo lectura, límite configurable de llamadas al LLM con mecanismos de cierre controlado y manejo de errores, y validación de evidencias.
+
+```mermaid
+flowchart LR
+    A[Pregunta del usuario] --> B[LLM interpreta intención]
+    B --> C[Selecciona herramienta]
+    C --> D[Consulta DuckDB / herramientas]
+    D --> E[Recibe resultados]
+    E --> F{¿Necesita otra consulta?}
+    F -- Sí --> C
+    F -- No --> G[Valida restricciones]
+    G --> H[Respuesta final en español / JSON]
+```
+
 ### Flujo del agente y *function calling*
 1. `app/agent.py` recibe la pregunta (CLI o `answer_question()`), detecta si solicita recomendaciones de sucursales (`is_recommendation_request()`) y construye el historial inicial; el `system_prompt` instruye responder siempre en español sin rechazar consultas por idioma.
 2. `app/llm.py` (`GeminiBackend` u `OpenRouterBackend`, ambos heredando de `_BaseResilientBackend`) envía el `system_prompt` (esquema + definiciones de métricas), el historial y las declaraciones de herramientas (`TOOL_SPECS` de `app/tools.py`). Los reintentos internos de ambos SDK están desactivados (`attempts=1` y `max_retries=0`) para controlar timeouts (`12 s` por intento), presupuesto total (`60 s` por pregunta) y trazabilidad desde un único lugar.
