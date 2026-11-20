@@ -15,7 +15,7 @@ Esta guía permite a cualquier persona clonar, configurar, ejecutar y evaluar el
 Desde la terminal, clonar el repositorio y ubicarse en su raíz:
 
 ```bash
-git clone <URL_DEL_REPOSITORIO>
+git clone https://github.com/nzanini/prueba-tecnica-airbag.git
 cd prueba-tecnica-airbag
 ```
 
@@ -147,19 +147,21 @@ python -m eval.run --questions eval/preguntas_robustez.jsonl --out-dir eval/resu
 
 ## 11. Evaluar un archivo JSONL nuevo del evaluador
 
-Podés crear un archivo `.jsonl` propio donde cada línea tenga exactamente estos 5 campos (`tipo`: `numero`, `lista` o `texto`; `tolerancia`: número o `null`):
+El evaluador puede crear un archivo `.jsonl` propio con cualquier cantidad de preguntas (por ejemplo, 50). Cada línea representa una pregunta con los cinco campos exigidos por Airbag (`id`, `pregunta`, `respuesta_esperada`, `tipo`: `numero`, `lista` o `texto`, y `tolerancia`: número o `null`):
 
 ```json
 {"id": "E01", "pregunta": "¿Cuántas sucursales hay en la región Sur?", "respuesta_esperada": 30, "tipo": "numero", "tolerancia": 0}
 ```
 
-Y evaluarlo con:
+El conjunto completo se ejecuta mediante `--questions`, indicando `--out-dir`:
 
 ```bash
 python -m eval.run --questions ruta/a/tus_preguntas.jsonl --out-dir eval/results/local/externo --save-traces
 ```
 
-> **Diferencia entre agente y evaluador:** el agente (`app.agent`) no necesita criterios previos para responder preguntas nuevas. En cambio, el scoring automático (`eval/run.py` + `eval/scoring.py`) compara contra `respuesta_esperada`, `tipo` y `tolerancia`: califica automáticamente `numero`, `lista` y `texto` corto (≤ 3 palabras normalizadas); las respuestas de `texto` extenso sin regla configurada en `eval/text_criteria.json` o `eval/robustness_criteria.json` quedan marcadas como `not_evaluable` para revisión manual, sin afectar la capacidad del agente para responderlas.
+Las preguntas individuales también pueden hacerse libremente mediante la CLI del agente (`python -m app.agent --question "..."`).
+
+> **Diferencia entre agente y evaluador:** el agente (`app.agent`) no necesita criterios precargados para responder preguntas nuevas. En cambio, el scoring automático (`eval/run.py` + `eval/scoring.py`) requiere las respuestas esperadas (`respuesta_esperada`, `tipo` y `tolerancia`): califica automáticamente `numero`, `lista` y `texto` corto (≤ 3 palabras normalizadas), y puede marcar respuestas de `texto` extenso como `not_evaluable` para revisión manual.
 
 *(También podés validar un JSON de recomendaciones contra DuckDB sin llamar al LLM usando `python -m eval.run --check-recommendations ruta/al/archivo.json`.)*
 

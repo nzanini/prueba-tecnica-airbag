@@ -2,12 +2,15 @@
 
 Prueba técnica de ML Engineer para Airbag: agente en español que permite a un gerente regional de *Café Tostadero* (120 sucursales, 4 regiones, período `2026-01-05` a `2026-03-29`) consultar ventas, quejas y capacitaciones, o solicitar recomendaciones priorizadas en JSON.
 
-## Arquitectura resumida
+## Arquitectura y estructura resumida
 
-1. **Auditoría y limpieza (`app/audit_data.py`, `app/prepare_data.py`, `app/db.py`):** diagnostica `data/raw/`, genera CSV limpios en `data/processed/` y construye `cafe_tostadero.duckdb` con vistas de métricas (`v_metricas_dia`, `v_metricas_semana_sucursal`, `v_metricas_sucursal`).
-2. **Herramientas y seguridad (`app/sql_guard.py`, `app/tools.py`):** valida el AST SQL con `sqlglot` (solo `SELECT`/`WITH` sobre tablas/vistas autorizadas), consulta DuckDB en solo lectura (`enable_external_access=false`) y valida recomendaciones (`submit_recommendations`).
-3. **Agente y proveedores (`app/agent.py`, `app/llm.py`, `app/config.py`, `app/prompts.py`):** soporta **OpenRouter** (`google/gemini-3.8-flash`, usado en las evaluaciones reales) y **Gemini API directo** (`gemini-3.8-flash` con fallback configurable). Las claves se leen desde variables de entorno (`.env`).
-4. **Evaluación (`eval/run.py`, `eval/scoring.py`):** evalúa preguntas `.jsonl` con extracción determinista (sin LLM juez), trazas opcionales (`--save-traces`) y reanudación segura (`--resume`).
+Flujo principal: limpieza reproducible en DuckDB (`v_metricas_dia`, `v_metricas_semana_sucursal`, `v_metricas_sucursal`), validación SQL por AST (`sqlglot`, solo `SELECT`/`WITH` en solo lectura) + validación de recomendaciones (`submit_recommendations`), ejecución con **OpenRouter** (`google/gemini-3.8-flash`) o **Gemini API directo** y evaluación determinista sin LLM juez.
+
+- `app/`: agente, herramientas, modelos, seguridad y preparación de datos.
+- `data/`: CSV originales, procesados y auditorías.
+- `eval/`: preguntas, evaluador, criterios y resultados.
+- `tests/`: pruebas offline.
+- `docs/`: arquitectura, decisiones, justificaciones y guías.
 
 Detalle técnico en [`docs/architecture.md`](docs/architecture.md), [`docs/metrics.md`](docs/metrics.md) y [`docs/decisions.md`](docs/decisions.md).
 
@@ -48,10 +51,16 @@ Guía completa paso a paso (Windows, Linux/macOS, `--resume`, `--rescore` y diag
 
 - **SQL + DuckDB embebido (en lugar de RAG o fine-tuning):** las preguntas requieren agregaciones, filtros y tasas exactas sobre tablas estructuradas.
 - **Evaluador determinista (sin LLM juez):** extrae números, listas ordenadas y criterios textuales con tolerancias explícitas (`eval/scoring.py`), separando errores del proveedor, agente, herramienta y evaluador (`summary.json`).
-- **Preguntas adicionales (comportamiento general, sin memorizar IDs):**
-  - **8 propias (`eval/preguntas_propias.jsonl`, P11–P18):** prueban deduplicación, exclusión de pedidos inválidos, días operativos en sucursales nuevas, anti-join de capacitaciones, semanas lunes–domingo, sesgo de selección, tasa vs volumen y detección de datos incompletos.
-  - **7 de robustez (`eval/preguntas_robustez.jsonl`, R01–R07):** prueban abstención ante sucursal inexistente, fuera de período, métrica ausente, datos externos, causalidad injustificada, muestra insuficiente y demanda contrafactual.
-  - Justificación detallada y SQL de referencia en [`docs/eval_cases.md`](docs/eval_cases.md).
+- **8 preguntas propias (`eval/preguntas_propias.jsonl`, P11–P18):**
+  - **P11:** evitar duplicados en los conteos.
+  - **P12:** detectar denominadores distorsionados por pedidos inválidos.
+  - **P13:** considerar los días operativos de sucursales nuevas.
+  - **P14:** identificar correctamente sucursales sin capacitación.
+  - **P15:** respetar períodos semanales.
+  - **P16:** reconocer sesgo de selección y límites causales.
+  - **P17:** distinguir tasas de volúmenes absolutos.
+  - **P18:** detectar registros incompletos.
+- **Justificación completa (`docs/eval_cases.md`):** en [`docs/eval_cases.md`](docs/eval_cases.md) se detallan P11–P18 y las **7 preguntas de robustez** (`eval/preguntas_robustez.jsonl`, R01–R07), diseñadas para comprobar abstención y manejo de información inexistente o insuficiente.
 
 ## Estimaciones históricas de rendimiento y costos (`google/gemini-3.8-flash` vía OpenRouter)
 
