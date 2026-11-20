@@ -58,6 +58,18 @@ class Config:
                 f"request_timeout_s={self.request_timeout_s}, question_budget_s={self.question_budget_s})")
 
 
+def _parse_positive_int(raw: str | None, name: str, default: int) -> int:
+    if raw is None or not raw.strip():
+        return default
+    try:
+        val = int(raw.strip())
+    except ValueError as e:
+        raise ConfigError(f"{name} debe ser un entero positivo (recibido: {raw!r}).") from e
+    if val < 1:
+        raise ConfigError(f"{name} debe ser un entero positivo >= 1 (recibido: {val}).")
+    return val
+
+
 def _parse_fallbacks(raw: str | None, primary: str, default: tuple[str, ...]) -> tuple[str, ...]:
     items = list(default) if raw is None else [x.strip() for x in raw.split(",") if x.strip()]
     vistos = {primary}
@@ -109,12 +121,14 @@ def load_config(model: str | None = None, fallback_models: str | list[str] | tup
     req_t = os.environ.get("GEMINI_REQUEST_TIMEOUT_S")
     q_budget = os.environ.get("GEMINI_QUESTION_BUDGET_S")
     retries = os.environ.get("GEMINI_MAX_RETRIES")
+    max_llm_calls = _parse_positive_int(os.environ.get("AGENT_MAX_LLM_CALLS"), "AGENT_MAX_LLM_CALLS", 10)
     return Config(
         api_key=key,
         model=chosen_model,
         provider=chosen_provider,
         base_url=base_url,
         fallback_models=fallbacks,
+        max_llm_calls=max_llm_calls,
         request_timeout_s=float(req_t) if req_t else 12.0,
         question_budget_s=float(q_budget) if q_budget else 60.0,
         max_retries_per_model=max(0, int(retries)) if retries is not None else 1,

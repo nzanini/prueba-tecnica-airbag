@@ -72,6 +72,11 @@ GEMINI_FALLBACK_MODELS=gemini-3.6-flash,gemini-3.5-flash-lite
 
 También podés sobrescribir proveedor o modelo por línea de comandos usando `--provider` y `--model` en `app.agent` y `eval.run`.
 
+**Ajustar el límite de llamadas al LLM (opcional):** por defecto el agente permite hasta `10` llamadas al modelo por pregunta (`max_llm_calls = 10`, distinto del límite de `12` ejecuciones de herramientas). Para aumentarlo (por ejemplo, a `20` en consultas complejas sin editar código), definí `AGENT_MAX_LLM_CALLS=20` en `.env` o en la terminal antes de ejecutar:
+
+- **Windows (PowerShell):** `$env:AGENT_MAX_LLM_CALLS="20"`
+- **Linux / macOS (bash/zsh):** `export AGENT_MAX_LLM_CALLS=20`
+
 ## 6. Preparar datos desde los CSV originales y reconstruir DuckDB
 
 Los archivos originales en `data/raw/` nunca se modifican. Para auditar, limpiar y reconstruir `data/processed/cafe_tostadero.duckdb` (archivo derivado excluido de Git):

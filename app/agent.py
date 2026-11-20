@@ -238,15 +238,25 @@ class Agent:
         extra_finalization_pending = False
         extra_finalization_used = False
 
+        def _budget_exhausted_msg() -> str:
+            return (
+                f"[budget_exhausted] Se alcanzó el límite configurado de {max_calls} llamadas al modelo "
+                f"sin obtener una respuesta final (límite del agente, no un fallo de {self.config.provider}). "
+                f"Podés aumentarlo definiendo AGENT_MAX_LLM_CALLS (por ejemplo, AGENT_MAX_LLM_CALLS=20)."
+            )
+
         while True:
             if step_idx >= max_calls:
                 if extra_finalization_pending and not extra_finalization_used:
                     extra_finalization_pending = False
                     extra_finalization_used = True
                 else:
-                    error = f"Se alcanzó el límite de {self.config.max_llm_calls} llamadas al modelo sin respuesta final."
                     error_source = "tool" if (tb.errors and tb.errors == tb.calls) else "agent"
                     error_type = "tool_error" if error_source == "tool" else "budget_exhausted"
+                    error = (
+                        f"Se alcanzó el límite de {max_calls} llamadas al modelo tras fallos en herramientas."
+                        if error_type == "tool_error" else _budget_exhausted_msg()
+                    )
                     break
             step_idx += 1
 
@@ -293,9 +303,12 @@ class Agent:
                         ))
                         extra_finalization_pending = True
                         continue
-                    error = f"Se alcanzó el límite de {self.config.max_llm_calls} llamadas al modelo sin respuesta final."
                     error_source = "tool" if (tb.errors and tb.errors == tb.calls) else "agent"
                     error_type = "tool_error" if error_source == "tool" else "budget_exhausted"
+                    error = (
+                        f"Se alcanzó el límite de {max_calls} llamadas al modelo tras fallos en herramientas."
+                        if error_type == "tool_error" else _budget_exhausted_msg()
+                    )
                     break
 
                 history.append(turn.content)

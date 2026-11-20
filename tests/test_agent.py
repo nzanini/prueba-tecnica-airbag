@@ -404,3 +404,34 @@ def test_cli_stdout_solo_respuesta(monkeypatch, capsys, hacer_agente, tmp_path):
     code = agent_mod.main(["-q", "¿Cuántas?", "--verbose"])
     out = capsys.readouterr()
     assert code == 0 and out.out == "30 sucursales.\n" and "[diag]" in out.err and "[diag]" not in out.out
+
+
+def test_config_max_llm_calls_por_defecto_y_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    monkeypatch.delenv("AGENT_MAX_LLM_CALLS", raising=False)
+    assert load_config(env_file=tmp_path / "no.env").max_llm_calls == 10
+
+    monkeypatch.setenv("AGENT_MAX_LLM_CALLS", "20")
+    assert load_config(env_file=tmp_path / "no.env").max_llm_calls == 20
+
+
+@pytest.mark.parametrize("bad_val", ["0", "-3", "abc", "1.5"])
+def test_config_max_llm_calls_invalido_rechazado(monkeypatch, tmp_path, bad_val):
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    monkeypatch.setenv("AGENT_MAX_LLM_CALLS", bad_val)
+    with pytest.raises(ConfigError):
+        load_config(env_file=tmp_path / "no.env")
+
+
+def test_cli_budget_exhausted_diagnostico_y_recomendaciones(monkeypatch, capsys, hacer_agente):
+    a = hacer_agente([sql("SELECT 1") for _ in range(4)], max_llm_calls=3)
+    monkeypatch.setattr(agent_mod, "load_config", lambda **kw: a.config)
+    monkeypatch.setattr(agent_mod, "Agent", lambda cfg: a)
+    code = agent_mod.main(["-q", "¿Qué sucursales debería visitar esta semana?"])
+    out = capsys.readouterr()
+    assert code == 1
+    assert out.out.strip() == "[]"
+    assert "budget_exhausted" in out.err
+    assert "3 llamadas" in out.err
+    assert "AGENT_MAX_LLM_CALLS" in out.err
+    assert a.config.provider in out.err
