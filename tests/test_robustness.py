@@ -322,3 +322,107 @@ def test_generalizacion_sucursal_inexistente_cualquiera(db_path):
         assert r.kind == "text" and "no existe" in r.answer.lower()
     finally:
         ag.close()
+
+
+# ------------------------------------------------ 6. Presupuesto y cierre de recomendaciones (Fase 5F)
+def test_recomendacion_cierra_con_nudge_en_ultimo_paso_presupuestado(db_path):
+    """Cuando el presupuesto está por agotarse y ya hay evidencia, se reserva el último paso para cerrar."""
+    captured_histories = []
+
+    class RecordingBackend(_SeqBackend):
+        def generate(self, history):
+            captured_histories.append(list(history))
+            return super().generate(history)
+
+    rec_args = {"recomendaciones": [{
+        "sucursal_id": "S012",
+        "motivo": "Alta tasa",
+        "evidencia": "39 quejas",
+        "accion_sugerida": "Auditar sucursal",
+    }]}
+    steps = [
+        Turn(calls=[ToolCall("run_sql", {"query": "SELECT sucursal_id, quejas FROM v_metricas_sucursal WHERE sucursal_id='S012'"})], content={}),
+        Turn(calls=[ToolCall("run_sql", {"query": "SELECT sucursal_id, pedidos_validos FROM v_metricas_sucursal WHERE sucursal_id='S012'"})], content={}),
+        Turn(calls=[ToolCall("submit_recommendations", rec_args)], content={}),
+    ]
+    ag = Agent(Config(api_key="k", max_llm_calls=3), backend=RecordingBackend(steps), db_path=db_path)
+    try:
+        res = ag.ask("¿Qué sucursales conviene visitar?")
+        assert res.kind == "json" and len(res.data) == 1 and res.data[0]["sucursal_id"] == "S012"
+        assert res.metrics["llm_calls"] == 3 and res.metrics["tool_calls"] == 3
+        assert any("Última oportunidad del presupuesto" in str(m) for m in captured_histories[-1])
+    finally:
+        ag.close()
+
+
+def test_recomendacion_llamada_extra_controlada_si_pide_herramienta_al_final(db_path):
+    """Si en el último paso pide otra consulta exploratoria habiendo evidencia, no la ejecuta y da 1 cierre controlado."""
+    rec_args = {"recomendaciones": [{
+        "sucursal_id": "S012",
+        "motivo": "Alta tasa",
+        "evidencia": "39 quejas",
+        "accion_sugerida": "Auditar sucursal",
+    }]}
+    steps = [
+        Turn(calls=[ToolCall("run_sql", {"query": "SELECT sucursal_id, quejas FROM v_metricas_sucursal WHERE sucursal_id='S012'"})], content={}),
+        Turn(calls=[ToolCall("run_sql", {"query": "SELECT sucursal_id, pedidos_validos FROM v_metricas_sucursal WHERE sucursal_id='S012'"})], content={}),
+        # Paso 3 (último presupuestado): insiste en pedir herramienta exploratoria
+        Turn(calls=[ToolCall("get_branch_summary", {"sucursal_id": "S012"})], content={}),
+        # Llamada extra controlada: emite submit_recommendations usando evidencia ya obtenida
+        Turn(calls=[ToolCall("submit_recommendations", rec_args)], content={}),
+    ]
+    ag = Agent(Config(api_key="k", max_llm_calls=3), backend=_SeqBackend(steps), db_path=db_path)
+    try:
+        res = ag.ask("¿Qué sucursales debería visitar?")
+        assert res.kind == "json" and res.data[0]["sucursal_id"] == "S012"
+        assert res.metrics["llm_calls"] == 4
+        # get_branch_summary del paso 3 NO se ejecutó en DuckDB; solo 2 run_sql + 1 submit_recommendations
+        assert res.metrics["tool_calls"] == 3
+    finally:
+        ag.close()
+
+
+def test_recomendacion_no_entra_en_loop_si_insiste_en_herramientas_y_distingue_errores(db_path):
+    """Si sigue pidiendo herramientas en la llamada extra o falta evidencia/hay JSON inválido, falla limpio."""
+    # Caso A: insiste en herramientas incluso en la llamada extra -> budget_exhausted
+    steps_loop = [
+        Turn(calls=[ToolCall("run_sql", {"query": "SELECT sucursal_id, quejas FROM v_metricas_sucursal WHERE sucursal_id='S012'"})], content={}),
+        Turn(calls=[ToolCall("run_sql", {"query": "SELECT sucursal_id, quejas FROM v_metricas_sucursal WHERE sucursal_id='S012'"})], content={}),
+        Turn(calls=[ToolCall("get_branch_summary", {"sucursal_id": "S012"})], content={}),
+        Turn(calls=[ToolCall("get_complaint_comments", {"sucursal_id": "S012"})], content={}),
+    ]
+    ag_loop = Agent(Config(api_key="k", max_llm_calls=3), backend=_SeqBackend(steps_loop), db_path=db_path)
+    try:
+        res = ag_loop.ask("¿Qué sucursales debería visitar?")
+        assert res.kind == "error" and res.answer == "[]"
+        assert res.metrics["error_type"] == "budget_exhausted"
+    finally:
+        ag_loop.close()
+
+    # Caso B: falta real de evidencia (sin consultas previas) -> no concede llamada extra
+    steps_no_ev = [
+        Turn(text="No tengo datos suficientes.", content={}),
+        Turn(text="Sigo sin datos.", content={}),
+    ]
+    ag_no_ev = Agent(Config(api_key="k", max_llm_calls=3), backend=_SeqBackend(steps_no_ev), db_path=db_path)
+    try:
+        res = ag_no_ev.ask("¿Qué sucursales debería visitar?")
+        assert res.kind == "error" and res.answer == "[]"
+        assert res.metrics["error_type"] == "missing_json"
+    finally:
+        ag_no_ev.close()
+
+    # Caso C: JSON inválido / cifra inventada -> validation_error
+    bad_json = json.dumps([{"sucursal_id": "S012", "motivo": "M", "evidencia": "999999 quejas", "accion_sugerida": "A"}])
+    steps_bad = [
+        Turn(calls=[ToolCall("run_sql", {"query": "SELECT sucursal_id, quejas FROM v_metricas_sucursal WHERE sucursal_id='S012'"})], content={}),
+        Turn(text=bad_json, content={}),
+        Turn(text=bad_json, content={}),
+    ]
+    ag_bad = Agent(Config(api_key="k", max_llm_calls=3), backend=_SeqBackend(steps_bad), db_path=db_path)
+    try:
+        res = ag_bad.ask("¿Qué sucursales debería visitar?")
+        assert res.kind == "error" and res.answer == "[]"
+        assert res.metrics["error_type"] == "validation_error"
+    finally:
+        ag_bad.close()

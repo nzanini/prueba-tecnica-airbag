@@ -193,6 +193,7 @@ class Agent:
         history = [be.user_content(question)]
         answer, kind, data, error, json_retries = "", "text", None, None, 0
         error_source: str | None = None
+        error_type: str | None = None
         failed_tools: set[str] = set()
         rec_required = is_recommendation_request(question)
         active_model: str | None = None
@@ -221,10 +222,57 @@ class Agent:
                 if v is not None:
                     m[k] = (m[k] or 0) + v
 
-        for _ in range(self.config.max_llm_calls):
+        def exec_tool_calls(calls_to_run: list[Any]) -> list[tuple[Any, dict]]:
+            results = []
+            for c in calls_to_run:
+                res = tb.call(c.name, c.args)
+                results.append((c, res))
+                ok = bool(res.get("ok"))
+                err_msg = res.get("error")
+                err_type = None if ok else _classify_tool_error(c.name, err_msg or "")
+                recovered = False
+                if not ok:
+                    failed_tools.add(c.name)
+                    m["tool_errors_by_type"][err_type] = m["tool_errors_by_type"].get(err_type, 0) + 1
+                elif c.name in failed_tools:
+                    recovered = True
+                    m["tool_recoveries"] += 1
+                    failed_tools.discard(c.name)
+                trace.append({
+                    "step": len(trace) + 1,
+                    "llm_turn": m["llm_calls"],
+                    "tool": c.name,
+                    "args": _compact_args(c.args),
+                    "ok": ok,
+                    "error_type": err_type,
+                    "error": err_msg,
+                    "row_count": res.get("row_count"),
+                    "recovered": recovered,
+                })
+            return results
+
+        max_calls = max(1, self.config.max_llm_calls)
+        step_idx = 0
+        finalization_nudge_sent = False
+        extra_finalization_pending = False
+        extra_finalization_used = False
+
+        while True:
+            if step_idx >= max_calls:
+                if extra_finalization_pending and not extra_finalization_used:
+                    extra_finalization_pending = False
+                    extra_finalization_used = True
+                else:
+                    error = f"Se alcanzó el límite de {self.config.max_llm_calls} llamadas al modelo sin respuesta final."
+                    error_source = "tool" if (tb.errors and tb.errors == tb.calls) else "agent"
+                    error_type = "tool_error" if error_source == "tool" else "budget_exhausted"
+                    break
+            step_idx += 1
+
             if time.perf_counter() >= deadline:
                 error = f"Se superó el presupuesto de tiempo ({self.config.question_budget_s:.0f}s) para responder."
                 error_source = "provider"
+                error_type = "provider_error"
                 break
             try:
                 turn = _call_backend(be, history, deadline, active_model)
@@ -234,6 +282,7 @@ class Agent:
                     m["model"] = m["attempts"][-1]["model"]
                 error = str(e)
                 error_source = "provider"
+                error_type = "provider_error"
                 break
             if turn.attempts:
                 record_attempts(turn.attempts)
@@ -246,44 +295,62 @@ class Agent:
                 m["model"] = turn.model
             m["llm_calls"] += 1
             add_tokens(turn)
+
             if turn.calls:
+                has_submit = any(c.name == "submit_recommendations" for c in turn.calls)
+                # En la última llamada presupuestada (o en la llamada extra controlada), evitar más consultas exploratorias.
+                if (step_idx >= max_calls and not has_submit) or (extra_finalization_used and not has_submit):
+                    if not extra_finalization_used and rec_required and max_calls >= 3 and tb.corpus:
+                        history.append(turn.content)
+                        blocked_msg = (
+                            "Presupuesto de herramientas agotado. No se ejecutarán más consultas exploratorias. "
+                            "Emití ahora la respuesta final usando únicamente la evidencia ya obtenida "
+                            "(llamando a submit_recommendations si corresponde, o indicando si falta información esencial)."
+                        )
+                        history.append(be.tool_results_content(
+                            [(c, {"ok": False, "error": blocked_msg}) for c in turn.calls]
+                        ))
+                        extra_finalization_pending = True
+                        continue
+                    error = f"Se alcanzó el límite de {self.config.max_llm_calls} llamadas al modelo sin respuesta final."
+                    error_source = "tool" if (tb.errors and tb.errors == tb.calls) else "agent"
+                    error_type = "tool_error" if error_source == "tool" else "budget_exhausted"
+                    break
+
                 history.append(turn.content)
-                results = []
-                for c in turn.calls:
-                    res = tb.call(c.name, c.args)
-                    results.append((c, res))
-                    ok = bool(res.get("ok"))
-                    err_msg = res.get("error")
-                    err_type = None if ok else _classify_tool_error(c.name, err_msg or "")
-                    recovered = False
-                    if not ok:
-                        failed_tools.add(c.name)
-                        m["tool_errors_by_type"][err_type] = m["tool_errors_by_type"].get(err_type, 0) + 1
-                    elif c.name in failed_tools:
-                        recovered = True
-                        m["tool_recoveries"] += 1
-                        failed_tools.discard(c.name)
-                    trace.append({
-                        "step": len(trace) + 1,
-                        "llm_turn": m["llm_calls"],
-                        "tool": c.name,
-                        "args": _compact_args(c.args),
-                        "ok": ok,
-                        "error_type": err_type,
-                        "error": err_msg,
-                        "row_count": res.get("row_count"),
-                        "recovered": recovered,
-                    })
+                calls_to_run = (
+                    [c for c in turn.calls if c.name == "submit_recommendations"]
+                    if extra_finalization_used else turn.calls
+                )
+                results = exec_tool_calls(calls_to_run)
                 history.append(be.tool_results_content(results))
                 if tb.final_recommendations is not None:
                     data, kind = tb.final_recommendations, "json"
                     answer = json.dumps(data, ensure_ascii=False, indent=2)
                     break
+                if extra_finalization_used:
+                    error = "No se logró validar la recomendación en la oportunidad final de cierre."
+                    error_source = "agent"
+                    error_type = "validation_error"
+                    break
+                if step_idx == max_calls - 1 and tb.corpus and not finalization_nudge_sent:
+                    finalization_nudge_sent = True
+                    nudge = (
+                        "Última oportunidad del presupuesto: ya consultaste datos suficientes. No pidas más consultas "
+                        "exploratorias; emití ahora las recomendaciones finales llamando a submit_recommendations usando "
+                        "únicamente la evidencia ya obtenida (o indicá si falta información esencial)."
+                        if rec_required else
+                        "Última oportunidad del presupuesto: no solicites más herramientas; respondé ahora usando "
+                        "únicamente la evidencia ya obtenida."
+                    )
+                    history.append(be.user_content(nudge))
                 continue
+
             text = turn.text.strip()
             if not text:
                 error = "El modelo devolvió una respuesta vacía."
                 error_source = "agent"
+                error_type = "empty_response"
                 break
             try:
                 parsed = parse_recommendations_text(text)
@@ -293,16 +360,17 @@ class Agent:
                     kind, answer = "json", json.dumps(data, ensure_ascii=False, indent=2)
                     break
             except RecommendationError as e:
-                if json_retries < 1:
+                if json_retries < 1 and step_idx < max_calls:
                     json_retries += 1
                     history += [turn.content, be.user_content(
                         f"Tu respuesta JSON no es válida: {e} Corregila y enviala con la herramienta submit_recommendations.")]
                     continue
                 error = f"Recomendaciones no válidas tras reintento: {e}"
                 error_source = "agent"
+                error_type = "validation_error"
                 break
             if rec_required:
-                if json_retries < 1 and tb.corpus:
+                if json_retries < 1 and tb.corpus and step_idx < max_calls:
                     json_retries += 1
                     history += [turn.content, be.user_content(
                         "Para esta solicitud debés responder exclusivamente enviando las recomendaciones con la "
@@ -311,16 +379,15 @@ class Agent:
                 error = ("Se solicitó una recomendación de sucursales, pero no se obtuvo un array JSON válido "
                          "(el modelo respondió con texto narrativo o sin evidencia consultada).")
                 error_source = "agent"
+                error_type = "missing_json"
                 break
             answer = text
             break
-        else:
-            error = f"Se alcanzó el límite de {self.config.max_llm_calls} llamadas al modelo sin respuesta final."
-            error_source = "tool" if (tb.errors and tb.errors == tb.calls) else "agent"
 
         if error:
             m["errors"].append(error)
             m["error_source"] = error_source or ("tool" if tb.errors and tb.errors == tb.calls else "agent")
+            m["error_type"] = error_type or "agent_error"
             kind = "error"
             if rec_required:
                 data, answer = [], "[]"
