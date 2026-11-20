@@ -241,3 +241,44 @@ def test_check_models_verifica_solo_configurados():
     assert [r["model"] for r in res] == ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]
     assert res[0]["ok"] is False and res[0]["error_code"] == 503
     assert res[1]["ok"] is True and res[1]["function_calling_ok"] is True
+
+
+def test_timeout_504_reintenta_una_vez_solo_sin_fallback_y_con_presupuesto(monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda _: None)
+
+    # 1) Sin fallback y con presupuesto suficiente: 1 único reintento controlado recupera el 504
+    calls = {"n": 0}
+
+    def handler_rec(model, contents, idx):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return FakeProviderError(504, "DEADLINE_EXCEEDED")
+        return _resp("30 sucursales.")
+
+    be_rec = GeminiBackend(
+        _cfg(fallback_models=(), max_retries_per_model=3, request_timeout_s=5.0, question_budget_s=20.0),
+        [], "sys", client=FakeClient(handler_rec),
+    )
+    turn = be_rec.generate([be_rec.user_content("hola")], deadline=time.perf_counter() + 20.0)
+    assert turn.text == "30 sucursales."
+    assert len(turn.attempts) == 2 and turn.attempts[0]["ok"] is False and turn.attempts[1]["ok"] is True
+
+    # 2) Si el 504 persiste, NO hace más de 1 reintento aunque max_retries_per_model sea 3
+    c_fail = FakeClient(lambda m, c, i: FakeProviderError(504, "DEADLINE_EXCEEDED"))
+    be_fail = GeminiBackend(
+        _cfg(fallback_models=(), max_retries_per_model=3, request_timeout_s=5.0, question_budget_s=20.0),
+        [], "sys", client=c_fail,
+    )
+    with pytest.raises(LLMError) as err:
+        be_fail.generate([be_fail.user_content("hola")], deadline=time.perf_counter() + 20.0)
+    assert len(c_fail.calls) == 2 and len(err.value.attempts) == 2
+
+    # 3) Si el presupuesto restante no alcanza para otro intento, no reintenta
+    c_low = FakeClient(lambda m, c, i: FakeProviderError(504, "DEADLINE_EXCEEDED"))
+    be_low = GeminiBackend(
+        _cfg(fallback_models=(), max_retries_per_model=1, request_timeout_s=12.0, question_budget_s=60.0),
+        [], "sys", client=c_low,
+    )
+    with pytest.raises(LLMError):
+        be_low.generate([be_low.user_content("hola")], deadline=time.perf_counter() + 4.0)
+    assert len(c_low.calls) == 1

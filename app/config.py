@@ -70,6 +70,27 @@ def _parse_positive_int(raw: str | None, name: str, default: int) -> int:
     return val
 
 
+def _parse_non_negative_int(raw: str | None, name: str, default: int) -> int:
+    if raw is None or not raw.strip():
+        return default
+    try:
+        val = int(raw.strip())
+    except ValueError as e:
+        raise ConfigError(f"{name} debe ser un entero >= 0 (recibido: {raw!r}).") from e
+    if val < 0:
+        raise ConfigError(f"{name} debe ser un entero >= 0 (recibido: {val}).")
+    return val
+
+
+def _parse_float_env(raw: str | None, name: str, default: float) -> float:
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return float(raw.strip())
+    except ValueError as e:
+        raise ConfigError(f"{name} debe ser un número válido (recibido: {raw!r}).") from e
+
+
 def _parse_fallbacks(raw: str | None, primary: str, default: tuple[str, ...]) -> tuple[str, ...]:
     items = list(default) if raw is None else [x.strip() for x in raw.split(",") if x.strip()]
     vistos = {primary}
@@ -108,19 +129,18 @@ def load_config(model: str | None = None, fallback_models: str | list[str] | tup
     else:
         key = (os.environ.get("GEMINI_API_KEY") or "").strip()
         if require_key and not key:
+            hint = ""
+            if (os.environ.get("OPENROUTER_API_KEY") or "").strip():
+                hint = " (Tenés OPENROUTER_API_KEY definida: para usar OpenRouter configurá LLM_PROVIDER=openrouter o pasá --provider openrouter.)"
             raise ConfigError(
                 "Falta GEMINI_API_KEY. Copiá .env.example a .env y completá GEMINI_API_KEY "
-                "(o definí la variable de entorno). No se realizó ninguna llamada a la API.")
+                f"(o definí la variable de entorno).{hint} No se realizó ninguna llamada a la API.")
         chosen_model = (model or os.environ.get("GEMINI_MODEL") or DEFAULT_MODEL).strip()
         base_url = None
         if fb_raw is None:
             fb_raw = os.environ.get("GEMINI_FALLBACK_MODELS")
         fallbacks = _parse_fallbacks(fb_raw, chosen_model, DEFAULT_FALLBACK_MODELS)
 
-    temp = os.environ.get("GEMINI_TEMPERATURE")
-    req_t = os.environ.get("GEMINI_REQUEST_TIMEOUT_S")
-    q_budget = os.environ.get("GEMINI_QUESTION_BUDGET_S")
-    retries = os.environ.get("GEMINI_MAX_RETRIES")
     max_llm_calls = _parse_positive_int(os.environ.get("AGENT_MAX_LLM_CALLS"), "AGENT_MAX_LLM_CALLS", 10)
     return Config(
         api_key=key,
@@ -129,8 +149,8 @@ def load_config(model: str | None = None, fallback_models: str | list[str] | tup
         base_url=base_url,
         fallback_models=fallbacks,
         max_llm_calls=max_llm_calls,
-        request_timeout_s=float(req_t) if req_t else 12.0,
-        question_budget_s=float(q_budget) if q_budget else 60.0,
-        max_retries_per_model=max(0, int(retries)) if retries is not None else 1,
-        temperature=float(temp) if temp else 0.0,
+        request_timeout_s=_parse_float_env(os.environ.get("GEMINI_REQUEST_TIMEOUT_S"), "GEMINI_REQUEST_TIMEOUT_S", 12.0),
+        question_budget_s=_parse_float_env(os.environ.get("GEMINI_QUESTION_BUDGET_S"), "GEMINI_QUESTION_BUDGET_S", 60.0),
+        max_retries_per_model=_parse_non_negative_int(os.environ.get("GEMINI_MAX_RETRIES"), "GEMINI_MAX_RETRIES", 1),
+        temperature=_parse_float_env(os.environ.get("GEMINI_TEMPERATURE"), "GEMINI_TEMPERATURE", 0.0),
     )

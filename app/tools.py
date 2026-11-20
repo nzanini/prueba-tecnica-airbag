@@ -92,41 +92,82 @@ def open_readonly(db_path: Path | str | None = None) -> duckdb.DuckDBPyConnectio
 
 
 # --------------------------------------------------------------------- validación de recomendaciones
+_CAT_ALIASES = {
+    "demora": ("demora", "demoras"),
+    "pedido_incorrecto": ("pedido_incorrecto", "pedido incorrecto", "pedidos incorrectos"),
+    "trato": ("trato",),
+    "limpieza": ("limpieza",),
+    "calidad_producto": ("calidad_producto", "calidad del producto", "calidad"),
+}
+_CANAL_ALIASES = {
+    "app": ("app",),
+    "telefono": ("telefono", "teléfono"),
+    "redes": ("redes",),
+    "en_tienda": ("en_tienda", "en tienda"),
+}
+_COUNT_ALIAS_COLS = frozenset({"quejas", "n", "cnt", "count", "cantidad", "total", "count_star()"})
+
+
 def _extract_branch_evidence(evidence_records: list[dict], sid: str) -> tuple[list[float], list[list[float]], dict[str, list[float]]]:
     """Extrae cifras, grupos coherentes por fila/ítem y métricas clave asociadas a ``sid``."""
     nums: list[float] = []
     row_groups: list[list[float]] = []
-    metrics: dict[str, list[float]] = {"quejas": [], "pedidos": [], "tasa": [], "dias": []}
+    metrics: dict[str, list[float]] = {"quejas": [], "quejas_categoria": [], "pedidos": [], "tasa": [], "dias": []}
 
-    def _add_metric(col: str, val: Any) -> None:
+    def _add_metric(col: str, val: Any, is_subcount: bool = False,
+                    cat_key: str | None = None, can_key: str | None = None) -> None:
         if not isinstance(val, (int, float)) or isinstance(val, bool):
             return
         c = col.lower()
+        fval = float(val)
+        if is_subcount:
+            if c in _COUNT_ALIAS_COLS or c == "total_quejas" or c.startswith(("quejas_", "cant_quejas_")):
+                metrics["quejas_categoria"].append(fval)
+                if cat_key:
+                    metrics.setdefault(f"cat:{cat_key}", []).append(fval)
+                if can_key:
+                    metrics.setdefault(f"can:{can_key}", []).append(fval)
+            return
         if c in ("quejas", "total_quejas", "quejas_en_dias_con_pedidos_validos"):
-            metrics["quejas"].append(float(val))
+            metrics["quejas"].append(fval)
+        elif c.startswith(("quejas_", "cant_quejas_")):
+            metrics["quejas_categoria"].append(fval)
+            for cat_name, aliases in _CAT_ALIASES.items():
+                if any(c.endswith(a.replace(" ", "_")) for a in aliases):
+                    metrics.setdefault(f"cat:{cat_name}", []).append(fval)
+                    break
         elif c in ("pedidos", "pedidos_validos"):
-            metrics["pedidos"].append(float(val))
+            metrics["pedidos"].append(fval)
         elif "tasa" in c:
-            metrics["tasa"].append(float(val))
+            metrics["tasa"].append(fval)
         elif c in ("dias_operativos", "dias_con_pedidos_validos"):
-            metrics["dias"].append(float(val))
+            metrics["dias"].append(fval)
 
     for rec in evidence_records:
         if "columns" in rec and "rows" in rec:
             cols = rec["columns"]
-            sid_idx = next((idx for idx, c in enumerate(cols) if c.lower() == "sucursal_id"), None)
+            cols_low = [c.lower() for c in cols]
+            sid_idx = next((idx for idx, c in enumerate(cols_low) if c == "sucursal_id"), None)
+            cat_idx = next((idx for idx, c in enumerate(cols_low) if c == "categoria"), None)
+            can_idx = next((idx for idx, c in enumerate(cols_low) if c == "canal"), None)
+            has_subdim = cat_idx is not None or can_idx is not None
+            has_other_count = any(c in _COUNT_ALIAS_COLS for c in cols_low)
             for row in rec["rows"]:
                 if sid_idx is not None and str(row[sid_idx]).strip().upper() != sid:
                     continue
                 if sid_idx is None and not any(str(v).strip().upper() == sid for v in row):
                     continue
+                cat_val = str(row[cat_idx]).strip().lower() if cat_idx is not None and row[cat_idx] is not None else None
+                can_val = str(row[can_idx]).strip().lower() if can_idx is not None and row[can_idx] is not None else None
                 grp: list[float] = []
                 for col, val in zip(cols, row):
                     if isinstance(val, (int, float)) and not isinstance(val, bool):
                         fval = float(val)
                         nums.append(fval)
                         grp.append(fval)
-                        _add_metric(col, val)
+                        clow = col.lower()
+                        is_sub = has_subdim and (clow in _COUNT_ALIAS_COLS or (clow == "total_quejas" and not has_other_count))
+                        _add_metric(col, val, is_subcount=is_sub, cat_key=cat_val, can_key=can_val)
                 if grp:
                     row_groups.append(grp)
         elif rec.get("sucursal_id") == sid or (isinstance(rec.get("sucursal"), dict) and rec["sucursal"].get("sucursal_id") == sid):
@@ -143,22 +184,24 @@ def _extract_branch_evidence(evidence_records: list[dict], sid: str) -> tuple[li
                 row_groups.append(base_grp)
             total_q = rec.get("total_quejas") or (rec.get("sucursal") or {}).get("quejas")
             for lista_k in ("por_categoria", "quejas_por_categoria", "semanas"):
+                is_cat_list = lista_k in ("por_categoria", "quejas_por_categoria")
                 for item in rec.get(lista_k) or []:
                     if isinstance(item, dict):
                         igrp: list[float] = [float(total_q)] if isinstance(total_q, (int, float)) and not isinstance(total_q, bool) else []
+                        cat_key = str(item["categoria"]).strip().lower() if is_cat_list and item.get("categoria") else None
                         for k, v in item.items():
                             if isinstance(v, (int, float)) and not isinstance(v, bool):
                                 fval = float(v)
                                 nums.append(fval)
                                 igrp.append(fval)
-                                _add_metric(k, v)
+                                _add_metric(k, v, is_subcount=is_cat_list, cat_key=cat_key)
                         if igrp:
                             row_groups.append(igrp)
     return nums, row_groups, metrics
 
 
 def _strip_dates_and_scales(texto: str) -> str:
-    """Elimina fechas ISO/DD-MM-YYYY/en español y escalas ('por cada 1.000') antes de extraer cifras."""
+    """Elimina fechas ISO/DD-MM-YYYY/en español y escalas ('por cada 1.000'/'1000') antes de extraer cifras."""
     t = re.sub(r"\b\d{4}-\d{2}-\d{2}\b", " ", texto)
     t = re.sub(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", " ", t)
     t = re.sub(
@@ -167,8 +210,17 @@ def _strip_dates_and_scales(texto: str) -> str:
         t,
         flags=re.IGNORECASE,
     )
-    t = re.sub(r"\b(?:por\s+cada|por|cada)\s+1[.,]000\b", " ", t, flags=re.IGNORECASE)
+    t = re.sub(r"\b(?:por\s+cada|por|cada)\s+1[.,]?000\b", " ", t, flags=re.IGNORECASE)
+    t = re.sub(r"(?:/|\bx\s*)1[.,]?000\b", " ", t, flags=re.IGNORECASE)
     return t
+
+
+def _matched_keys(ctx: str, alias_map: dict[str, tuple[str, ...]]) -> list[str]:
+    out = []
+    for key, aliases in alias_map.items():
+        if any(re.search(rf"(?<!\w){re.escape(a)}(?!\w)", ctx) for a in aliases):
+            out.append(key)
+    return out
 
 
 def _check_contradictions(sid: str, evidencia: str, metrics: dict[str, list[float]]) -> None:
@@ -177,28 +229,63 @@ def _check_contradictions(sid: str, evidencia: str, metrics: dict[str, list[floa
     if not tasa_vals and metrics.get("quejas") and metrics.get("pedidos"):
         tasa_vals = [1000.0 * q / p for q in metrics["quejas"] for p in metrics["pedidos"] if p > 0]
 
-    # 1) Quejas (conteo absoluto, excluyendo tasas "... quejas por 1.000" y porcentajes)
-    if metrics.get("quejas"):
+    # 1) Quejas: distingue totales/período de subconteos por categoría o canal
+    if metrics.get("quejas") or metrics.get("quejas_categoria"):
         for m in re.finditer(r"(\d[\d.,]*)\s*(%?)\s+quejas?\b", evidencia, flags=re.IGNORECASE):
             if m.group(2) == "%":
                 continue
-            prefix = evidencia[max(0, m.start() - 28):m.start()].lower()
-            suffix = evidencia[m.end():m.end() + 25].lower()
-            if re.search(r"\btasa\b|\bporcentaje\b", prefix):
+            prefix = evidencia[max(0, m.start() - 40):m.start()].lower()
+            suffix = evidencia[m.end():m.end() + 65].lower()
+            if re.search(r"\btasa\b|\bporcentaje\b", prefix[-28:]):
                 continue
-            if re.match(r"\s+por\s+(?:cada\s+)?1[.,]?000\b", suffix):
+            if re.match(r"^(?:\s+(?:por(?:\s+cada)?|cada)\s+|/\s*|x\s*)1[.,]?000\b", suffix):
                 continue
             parsed = _numeros(m.group(1))
-            if parsed and not any(abs(v - parsed[0]) <= 0.5 for v in metrics["quejas"]):
+            if not parsed:
+                continue
+            val = parsed[0]
+            rel_prefix = re.split(r"[.;,\n(]|\b(?:y|e|pero|adem[aá]s|mientras)\b", prefix)[-1]
+            suffix_noparen = re.sub(r"\([^)]*\)", " ", suffix)
+            rel_suffix = re.split(r"[.;,\n]|\b(?:y|e|pero|adem[aá]s|mientras)\b", suffix_noparen, maxsplit=1)[0]
+            rel_ctx = f"{rel_prefix} {rel_suffix}"
+            is_explicit_total = bool(re.search(
+                r"\b(?:totales|en\s+total|total|acumulad[oa]s?|registradas\s+en\s+el\s+per[ií]odo)\b",
+                rel_ctx,
+            ))
+            matched_cats = [] if is_explicit_total else _matched_keys(rel_ctx, _CAT_ALIASES)
+            matched_cans = [] if is_explicit_total else _matched_keys(rel_ctx, _CANAL_ALIASES)
+            has_dim_word = (not is_explicit_total) and bool(
+                re.search(r"\bcategor[ií]a\b|\bcanal\b", rel_ctx)
+            )
+
+            if len(matched_cats) == 1:
+                expected = metrics.get(f"cat:{matched_cats[0]}") or metrics.get("quejas_categoria") or []
+                if expected and not any(abs(v - val) <= 0.5 for v in expected):
+                    raise RecommendationError(
+                        f"{sid}: evidencia contradictoria para quejas de {matched_cats[0]} (afirma {val}, consultado {expected})."
+                    )
+            elif len(matched_cans) == 1:
+                expected = metrics.get(f"can:{matched_cans[0]}") or metrics.get("quejas_categoria") or []
+                if expected and not any(abs(v - val) <= 0.5 for v in expected):
+                    raise RecommendationError(
+                        f"{sid}: evidencia contradictoria para quejas de canal {matched_cans[0]} (afirma {val}, consultado {expected})."
+                    )
+            elif matched_cats or matched_cans or has_dim_word:
+                expected = metrics.get("quejas_categoria") or []
+                if expected and not any(abs(v - val) <= 0.5 for v in expected):
+                    raise RecommendationError(
+                        f"{sid}: evidencia contradictoria para subconteo de quejas (afirma {val}, consultado {expected})."
+                    )
+            elif metrics.get("quejas") and not any(abs(v - val) <= 0.5 for v in metrics["quejas"]):
                 raise RecommendationError(
-                    f"{sid}: evidencia contradictoria para quejas (afirma {parsed[0]}, consultado {metrics['quejas']})."
+                    f"{sid}: evidencia contradictoria para quejas (afirma {val}, consultado {metrics['quejas']})."
                 )
 
     # 2) Pedidos (excluyendo escalas "por/cada 1.000 pedidos")
     if metrics.get("pedidos"):
         for m in re.finditer(r"(\d[\d.,]*)\s+pedidos(?:\s+validos|\s+válidos)?\b", evidencia, flags=re.IGNORECASE):
-            prefix = evidencia[max(0, m.start() - 12):m.start()].lower()
-            if any(w in prefix for w in ("cada ", "por ")):
+            prefix = evidencia[max(0, m.start() - 14):m.start()].lower()
+            if re.search(r"(?:(?:por(?:\s+cada)?|cada)\s+|/\s*|x\s*)$", prefix) and m.group(1) in ("1000", "1.000", "1,000"):
                 continue
             parsed = _numeros(m.group(1))
             if parsed and not any(abs(v - parsed[0]) <= 0.5 for v in metrics["pedidos"]):
@@ -231,7 +318,8 @@ def _check_contradictions(sid: str, evidencia: str, metrics: dict[str, list[floa
 
 
 def _respaldado_ext(n: float, corpus_nums: list[float], is_percent: bool = False,
-                    row_groups: list[list[float]] | None = None) -> bool:
+                    row_groups: list[list[float]] | None = None,
+                    extra_pct_groups: list[list[float]] | None = None) -> bool:
     if _respaldado(n, corpus_nums, is_percent=is_percent):
         return True
     # Cálculos derivados solo dentro de un mismo grupo coherente (misma fila/ítem de esa sucursal)
@@ -247,6 +335,10 @@ def _respaldado_ext(n: float, corpus_nums: list[float], is_percent: bool = False
                     return True
                 if not is_percent and abs((1000.0 * a / b) - n) <= 0.06:
                     return True
+    if is_percent and extra_pct_groups:
+        for a, b in extra_pct_groups:
+            if b > 0 and 0 <= a <= b and abs((100.0 * a / b) - n) <= 0.15:
+                return True
     return False
 
 
@@ -289,11 +381,18 @@ def validate_recommendations(items: Any, valid_ids: set[str], corpus: str | None
         if corpus is not None or evidence_records is not None:
             ref_nums = branch_nums if evidence_records is not None else corpus_nums
             groups = row_groups if evidence_records is not None else None
+            cat_pct_pairs = (
+                [[c, t] for c in branch_metrics.get("quejas_categoria", [])
+                 for t in branch_metrics.get("quejas", []) if 0 <= c <= t]
+                if evidence_records is not None else None
+            )
             ev_clean = _strip_dates_and_scales(evidencia)
             pct_vals = {float(v) for m in re.finditer(r"(\d[\d.,]*)\s*%", ev_clean) for v in _numeros(m.group(1))}
             faltan = [
                 n for n in _numeros(ev_clean)
-                if not _respaldado_ext(n, ref_nums, is_percent=(n in pct_vals), row_groups=groups)
+                if not _respaldado_ext(
+                    n, ref_nums, is_percent=(n in pct_vals), row_groups=groups, extra_pct_groups=cat_pct_pairs
+                )
             ]
             if faltan:
                 msg = f"{sid}: evidencia con cifras no respaldadas en las consultas de esta sucursal: {faltan[:6]}"
@@ -306,7 +405,7 @@ def validate_recommendations(items: Any, valid_ids: set[str], corpus: str | None
 
 def _numeros(texto: str) -> list[float]:
     out = []
-    for m in re.findall(r"\d[\d.,]*", texto):
+    for m in re.findall(r"(?<![A-Za-z0-9_])\d[\d.,]*(?![A-Za-z0-9_])", texto):
         s = m.rstrip(".,")
         if not s:
             continue

@@ -22,7 +22,8 @@ Requisitos: **Python 3.11+**, **Git** y una clave de **OpenRouter** (`OPENROUTER
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1          # Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
-Copy-Item .env.example .env           # Linux/macOS: cp .env.example .env (completar API key)
+Copy-Item .env.example .env           # Linux/macOS: cp .env.example .env
+# En .env: completar GEMINI_API_KEY (por defecto) o definir LLM_PROVIDER=openrouter + OPENROUTER_API_KEY
 python -m app.prepare_data            # genera data/processed/ y cafe_tostadero.duckdb
 ```
 

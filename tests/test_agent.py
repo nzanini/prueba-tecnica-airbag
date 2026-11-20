@@ -435,3 +435,28 @@ def test_cli_budget_exhausted_diagnostico_y_recomendaciones(monkeypatch, capsys,
     assert "3 llamadas" in out.err
     assert "AGENT_MAX_LLM_CALLS" in out.err
     assert a.config.provider in out.err
+
+
+def test_config_variables_vacias_y_pista_openrouter(monkeypatch, tmp_path):
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    monkeypatch.setenv("GEMINI_MAX_RETRIES", "")
+    monkeypatch.setenv("GEMINI_REQUEST_TIMEOUT_S", "  ")
+    monkeypatch.setenv("GEMINI_QUESTION_BUDGET_S", "")
+    monkeypatch.setenv("GEMINI_TEMPERATURE", "")
+    cfg = load_config(env_file=tmp_path / "no.env")
+    assert cfg.max_retries_per_model == 1
+    assert cfg.request_timeout_s == 12.0
+    assert cfg.question_budget_s == 60.0
+    assert cfg.temperature == 0.0
+
+    monkeypatch.setenv("GEMINI_MAX_RETRIES", "-1")
+    with pytest.raises(ConfigError):
+        load_config(env_file=tmp_path / "no.env")
+
+    monkeypatch.delenv("GEMINI_MAX_RETRIES", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test12345678901234567890")
+    with pytest.raises(ConfigError) as e:
+        load_config(env_file=tmp_path / "no.env")
+    assert "GEMINI_API_KEY" in str(e.value) and "LLM_PROVIDER=openrouter" in str(e.value)

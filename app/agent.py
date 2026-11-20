@@ -53,9 +53,14 @@ _DESCRIPTIVE_RE = re.compile(
     re.IGNORECASE,
 )
 _EXPLICIT_REC_VERB_RE = re.compile(
-    r"\b(?:visitar|visito|inspeccion\w*|auditar|recom(?:iend|end)\w*|suger[ií]s|sugier\w*|"
-    r"visit|inspect\w*|recommend\w*|prioritiz\w*|"
+    r"\b(?:visitar|visito|visite|inspeccion\w*|auditar|recom(?:iend|end)\w*|suger[ií]s|sugier\w*|"
+    r"(?:conviene|deber[ií]a(?:mos)?|habr[ií]a\s+que|hay\s+que|vale\s+la\s+pena)\s+(?:ir(?:\s+a)?|revisar|visitar|inspeccionar|auditar|atender)|"
+    r"visit|inspect\w*|recommend\w*|prioritiz\w*|should\s+(?:i|we)\s+(?:visit|inspect|review|audit|check|prioritize)|"
     r"visiter|inspecter|recommand\w*|prioris\w*)\b",
+    re.IGNORECASE,
+)
+_NON_BRANCH_QUE_RE = re.compile(
+    r"^\s*¿?\s*(?:qu[eé]|what)\s+(?:categor[ií]as?|canal(?:es)?|m[eé]tricas?|tablas?|columnas?|comentarios?|productos?)\b",
     re.IGNORECASE,
 )
 
@@ -67,7 +72,10 @@ def is_recommendation_request(question: str) -> bool:
         return False
     if _DESCRIPTIVE_RE.search(q) and not _EXPLICIT_REC_VERB_RE.search(q):
         return False
-    return bool(_REC_TARGET_RE.search(q))
+    if _REC_TARGET_RE.search(q):
+        return True
+    # Solicitudes elípticas del gerente (p. ej. "¿Qué debería revisar esta semana?") sin otro sustantivo objetivo
+    return bool(re.search(r"\b(?:qu[eé]|what)\b", q, re.IGNORECASE) and not _NON_BRANCH_QUE_RE.search(q))
 
 
 @dataclass

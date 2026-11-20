@@ -506,3 +506,57 @@ def test_recomendacion_no_entra_en_loop_si_insiste_en_herramientas_y_distingue_e
         assert res.metrics["error_type"] == "validation_error"
     finally:
         ag_bad.close()
+
+
+# ------------------------------------------------ 7. Regresiones de auditoría final
+@pytest.mark.parametrize("q,esperado", [
+    ("¿Qué debería revisar esta semana?", True),
+    ("¿Cuáles son las sucursales con más quejas que debería revisar?", True),
+    ("¿Qué conviene visitar primero?", True),
+    ("What should I review this week?", True),
+    ("Mostrame el ranking de sucursales para revisar la tasa de quejas.", False),
+    ("¿Qué categoría debería revisar primero?", False),
+    ("¿Qué canal conviene revisar primero?", False),
+    ("¿Qué sucursales van peor?", False),
+    ("¿Cuántas sucursales tuvieron más quejas este mes?", False),
+])
+def test_detector_recomendaciones_casos_elipticos_y_mixtos(q, esperado):
+    assert is_recommendation_request(q) is esperado
+
+
+def test_evidencia_sin_falsos_rechazos_por_id_escala_ni_subconteo():
+    ev_records = [
+        {"columns": ["sucursal_id", "quejas", "pedidos_validos", "tasa_quejas_x1000", "dias_operativos"],
+         "rows": [["S034", 60, 23569, 2.55, 30]]},
+        {"columns": ["sucursal_id", "categoria", "cnt"],
+         "rows": [["S034", "limpieza", 49], ["S034", "trato", 3]]},
+    ]
+    corpus = json.dumps(ev_records)
+
+    # Positivos: ID S034 en evidencia, escala '1000' sin punto, total + subconteo por categoría y paréntesis
+    for ev_ok in (
+        "S034 registró 60 quejas sobre 23569 pedidos válidos (tasa 2.55 por cada 1000 pedidos).",
+        "60 quejas totales en el período y 49 quejas de limpieza (81.67%).",
+        "60 quejas totales, principalmente de limpieza (49 de 60) en 30 días operativos.",
+        "Tasa de 2.55 quejas/1000 pedidos; 49 quejas por limpieza y 3 quejas de trato.",
+    ):
+        clean, warns = validate_recommendations(
+            [{"sucursal_id": "S034", "motivo": "M", "evidencia": ev_ok, "accion_sugerida": "A"}],
+            {"S034"}, corpus, ev_records,
+        )
+        assert len(clean) == 1 and warns == []
+
+    # Adversariales: no debilitar control de cifras inventadas ni contradicciones reales
+    for ev_bad in (
+        "12 quejas en 1000 pedidos.",  # '1000 pedidos' sin 'por/cada' es cifra de pedidos, no escala
+        "60 quejas y puntaje interno 777.",  # cifra inventada
+        "49 quejas totales registradas.",  # subconteo de categoría presentado como total (total real = 60)
+        "3 quejas de limpieza en el período.",  # subconteo de otra categoría asignado a limpieza (limpieza real = 49)
+        "60 quejas de limpieza en el período.",  # total asignado a una categoría (limpieza real = 49)
+        "30 quejas de limpieza registradas.",  # usa otro número del corpus (30 días) como quejas de limpieza
+    ):
+        with pytest.raises(RecommendationError):
+            validate_recommendations(
+                [{"sucursal_id": "S034", "motivo": "M", "evidencia": ev_bad, "accion_sugerida": "A"}],
+                {"S034"}, corpus, ev_records,
+            )

@@ -224,6 +224,8 @@ def render_markdown(summary: dict, records: list[dict]) -> str:
         f"- Proveedor / modelo: `{summary.get('provider', 'N/A')}` / `{summary.get('model_configured', 'N/A')}`",
         f"- Archivo de preguntas: `{summary['questions_file']}`",
     ]
+    if summary.get("rescored_from"):
+        lines.append(f"- Reevaluación (`--rescore`): `True` (origen: `{summary['rescored_from']}`)")
     hashes = summary.get("hashes") or {}
     if hashes:
         lines.append(
@@ -347,8 +349,12 @@ def _safe_agent_config(agent: Agent | None) -> dict[str, Any]:
         "provider": getattr(cfg, "provider", None),
         "model": getattr(cfg, "model", None),
         "fallback_models": list(getattr(cfg, "fallback_models", ()) or ()),
-        "max_steps": getattr(cfg, "max_steps", None),
-        "timeout_s": getattr(cfg, "timeout_s", None),
+        "max_llm_calls": getattr(cfg, "max_llm_calls", None),
+        "max_tool_calls": getattr(cfg, "max_tool_calls", None),
+        "query_timeout_s": getattr(cfg, "query_timeout_s", None),
+        "request_timeout_s": getattr(cfg, "request_timeout_s", None),
+        "question_budget_s": getattr(cfg, "question_budget_s", None),
+        "max_retries_per_model": getattr(cfg, "max_retries_per_model", None),
     }
 
 
@@ -571,6 +577,7 @@ def rescore_results(
     """Reevalúa respuestas ya guardadas en ``results.jsonl`` sin llamar a ningún LLM ni pisar el original."""
     questions = {q["id"]: q for q in load_jsonl(questions_path)}
     stored = load_jsonl(results_path)
+    prev_summary = load_json(results_path.with_name("summary.json"))
     criteria = load_json(criteria_path)
     if criteria_path == DEFAULT_CRITERIA and DEFAULT_ROBUSTNESS_CRITERIA.exists():
         criteria = {**criteria, **load_json(DEFAULT_ROBUSTNESS_CRITERIA)}
@@ -585,18 +592,39 @@ def rescore_results(
             rec["estado"] = ev["estado"]
             rec["valor_extraido"] = ev["valor_extraido"]
             rec["motivo"] = ev["motivo"]
+            if ev["estado"] == "extraction_error":
+                rec["error_source"] = "evaluator"
+            elif rec.get("error_source") == "evaluator":
+                rec["error_source"] = "tool" if rec.get("tool_errors") else None
         new_records.append(rec)
+
+    orig_mode = prev_summary.get("mode") or "real"
+    model_configured = prev_summary.get("model_configured") or next(
+        (r.get("modelo_configurado") or r.get("modelo_usado") for r in stored
+         if r.get("modelo_configurado") or r.get("modelo_usado")),
+        None,
+    )
+    provider = prev_summary.get("provider")
+    if not provider and isinstance(model_configured, str) and "/" in model_configured:
+        provider = "openrouter"
+    prev_hashes = prev_summary.get("hashes") or {}
 
     rescore_meta = {
         "timestamp_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "provider": provider,
+        "model_configured": model_configured,
+        "agent_config": prev_summary.get("agent_config"),
         "hashes": {
             "questions_sha256": _sha256_file(questions_path),
             "criteria_sha256": _sha256_file(criteria_path),
-            "data_sha256": _data_sha256(),
+            "data_sha256": prev_hashes.get("data_sha256") or _data_sha256(),
         },
     }
-    summary = summarize(new_records, "real", questions_path, metadata=rescore_meta)
+    summary = summarize(new_records, orig_mode, questions_path, metadata=rescore_meta)
+    summary["is_rescore"] = True
     summary["rescored_from"] = str(results_path.as_posix())
+    if prev_summary.get("timestamp_utc"):
+        summary["original_timestamp_utc"] = prev_summary["timestamp_utc"]
     _write_outputs(out_dir, new_records, summary)
     return summary
 

@@ -649,3 +649,67 @@ def test_cli_errores_separan_stdout_y_stderr_sin_secretos(monkeypatch, capsys):
     assert code2 == 1
     assert cap2.out.strip() == "[]"
     assert "[error:agente]" in cap2.err
+
+
+def test_safe_agent_config_y_rescore_preservan_metadatos(tmp_path):
+    cfg = Config(
+        provider="openrouter", api_key="sk-secret", model="google/gemini-3.8-flash",
+        max_llm_calls=14, max_tool_calls=16, query_timeout_s=18.0,
+        request_timeout_s=15.0, question_budget_s=75.0, max_retries_per_model=2,
+    )
+
+    class StubAgent:
+        def __init__(self):
+            self.config = cfg
+
+    meta = eval_run._safe_agent_config(StubAgent())
+    assert meta == {
+        "provider": "openrouter",
+        "model": "google/gemini-3.8-flash",
+        "fallback_models": ["gemini-3.6-flash", "gemini-3.5-flash-lite"],
+        "max_llm_calls": 14,
+        "max_tool_calls": 16,
+        "query_timeout_s": 18.0,
+        "request_timeout_s": 15.0,
+        "question_budget_s": 75.0,
+        "max_retries_per_model": 2,
+    }
+    assert "sk-secret" not in json.dumps(meta)
+
+    orig_dir = tmp_path / "orig"
+    orig_dir.mkdir()
+    recs = [
+        {"id": "P06", "pregunta": "q6", "tipo": "lista", "esperado": ["S012", "S107", "S067"],
+         "obtenido": "S012, S107, S067\n1. S012\n2. S107\n3. S067",
+         "valor_extraido": None, "estado": "extraction_error", "error_source": "evaluator",
+         "motivo": "old", "modelo_configurado": "google/gemini-3.8-flash", "modelo_usado": "google/gemini-3.8-flash",
+         "latencia_s": 5.0, "tokens_in": 100, "tokens_out": 20, "llm_calls": 1, "tool_calls": 1},
+        {"id": "P01", "pregunta": "q1", "tipo": "numero", "esperado": 30,
+         "obtenido": "No pude completar la consulta: 504",
+         "valor_extraido": None, "estado": "provider_error", "error_source": "provider",
+         "motivo": "504", "modelo_configurado": "google/gemini-3.8-flash", "modelo_usado": "google/gemini-3.8-flash",
+         "latencia_s": 12.0, "tokens_in": None, "tokens_out": None, "tokens_partial": True, "llm_calls": 0, "tool_calls": 0},
+    ]
+    orig_file = orig_dir / "results.jsonl"
+    orig_file.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in recs) + "\n", encoding="utf-8")
+    (orig_dir / "summary.json").write_text(json.dumps({
+        "mode": "real",
+        "timestamp_utc": "2026-11-19T10:00:00+00:00",
+        "provider": "openrouter",
+        "model_configured": "google/gemini-3.8-flash",
+        "agent_config": meta,
+    }), encoding="utf-8")
+
+    out_dir = tmp_path / "rescored"
+    summary = eval_run.rescore_results(EJEMPLO, orig_file, out_dir=out_dir)
+    assert summary["provider"] == "openrouter"
+    assert summary["model_configured"] == "google/gemini-3.8-flash"
+    assert summary["agent_config"] == meta
+    assert summary["is_rescore"] is True
+    assert summary["original_timestamp_utc"] == "2026-11-19T10:00:00+00:00"
+    assert summary["counts"]["correct"] == 1 and summary["counts"]["provider_error"] == 1
+    rescored_rows = eval_run.load_jsonl(out_dir / "results.jsonl")
+    assert rescored_rows[0]["error_source"] is None
+    assert rescored_rows[1]["estado"] == "provider_error" and rescored_rows[1]["error_source"] == "provider"
+    report_md = (out_dir / "report.md").read_text(encoding="utf-8")
+    assert "Reevaluación (`--rescore`)" in report_md and "openrouter" in report_md

@@ -185,7 +185,23 @@ class _BaseResilientBackend:
                         "input_tokens": None, "output_tokens": None,  # nunca asumir 0 en fallo
                         "fallback_from": prev_model if prev_model and prev_model != model else None,
                     })
-                    if not info.retryable_same_model:
+                    can_retry = info.retryable_same_model
+                    # Si es el último modelo disponible (sin fallback siguiente, p. ej. OpenRouter sin fallbacks),
+                    # permitir un único reintento controlado ante timeout/504 dentro del presupuesto de tiempo.
+                    if (
+                        not can_retry
+                        and info.category == "timeout"
+                        and model == chain[-1]
+                        and n_try == 1
+                        and self.app_config.max_retries_per_model >= 1
+                    ):
+                        rem = (deadline - time.perf_counter()) if deadline is not None else self.app_config.question_budget_s
+                        min_needed = self.app_config.retry_base_delay_s + min(
+                            self.app_config.request_timeout_s,
+                            self.app_config.question_budget_s * 0.5,
+                        )
+                        can_retry = rem >= min_needed
+                    if not can_retry:
                         break
                     if n_try <= self.app_config.max_retries_per_model:
                         delay = info.retry_after_s if info.retry_after_s is not None else (
