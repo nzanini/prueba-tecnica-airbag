@@ -538,8 +538,8 @@ TOOL_SPECS: list[dict] = [
          "type": "array", "description": "Lista de 1 a 10 recomendaciones.",
          "items": {"type": "object", "properties": {
              "sucursal_id": {**_STR, "description": "ID existente, ej. S012"},
-             "motivo": {**_STR, "description": "Por qué necesita atención"},
-             "evidencia": {**_STR, "description": "Cifras obtenidas con las consultas"},
-             "accion_sugerida": {**_STR, "description": "Acción concreta para el gerente"}},
+             "motivo": {**_STR, "description": "Por qué necesita atención (redactado en español)"},
+             "evidencia": {**_STR, "description": "Cifras obtenidas con las consultas (redactado en español)"},
+             "accion_sugerida": {**_STR, "description": "Acción concreta para el gerente (redactado en español)"}},
              "required": list(REC_KEYS)}}}, "required": ["recomendaciones"]}},
 ]

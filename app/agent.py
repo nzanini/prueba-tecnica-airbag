@@ -27,48 +27,37 @@ from app.prompts import build_system_prompt
 from app.tools import (TOOL_SPECS, RecommendationError, ToolBox, parse_recommendations_text,
                        validate_recommendations)
 
-_NON_ES_WORDS = frozenset({
-    "how", "many", "what", "which", "where", "when", "who", "why", "please", "show", "tell",
-    "give", "list", "the", "are", "there", "have", "has", "does", "did", "with", "from",
-    "branches", "branch", "complaints", "complaint", "sales", "orders", "should", "visit",
-    "average", "rate", "region", "between", "during", "explain", "summarize", "summary",
-    "quantas", "quais", "qual", "onde", "filiais", "lojas", "reclamacoes", "vendas", "voce",
-    "combien", "quelles", "quels", "succursales", "plaintes", "ventes",
-})
-_ES_HINTS = frozenset({
-    "qué", "que", "cuántas", "cuantas", "cuántos", "cuantos", "cuál", "cual", "cuáles", "cuales",
-    "dónde", "donde", "cómo", "como", "por", "para", "con", "sin", "las", "los", "una", "uno",
-    "del", "de", "en", "hay", "tuvo", "tuvieron", "sucursal", "sucursales", "quejas", "queja",
-    "pedidos", "región", "region", "semana", "periodo", "período", "resumen", "resume", "visitar",
-    "debería", "deberia", "tasa", "más", "mas", "hola",
-})
-
-
-def is_non_spanish_query(question: str) -> bool:
-    """Heurística sin LLM: detecta consultas claramente redactadas en otro idioma."""
-    if not question or any(ch in question for ch in "¿¡ñÑáéíóúÁÉÍÓÚüÜ"):
-        return False
-    tokens = re.findall(r"[a-zA-Záéíóúüñ]+", question.lower())
-    if not tokens:
-        return False
-    if any(t in _ES_HINTS for t in tokens):
-        return False
-    hits = sum(1 for t in tokens if t in _NON_ES_WORDS)
-    return hits >= 2 or (len(tokens) <= 3 and hits >= 1 and any(t in {"hello", "hi", "english"} for t in tokens))
-
-
 _REC_TARGET_RE = re.compile(
-    r"\bsucursal(?:es)?\b|\btiendas?\b|\blocales?\b|\bcu[aá]les\b|\bd[oó]nde\b",
+    r"\bsucursal(?:es)?\b|\btiendas?\b|\blocales?\b|\bcafeter[ií]as?\b|\bpuntos?\s+de\s+venta\b|\bcu[aá]les\b|\bd[oó]nde\b"
+    r"|\bbranch(?:es)?\b|\bstores?\b|\bshops?\b|\blocations?\b|\bcafes?\b|\bwhich\b|\bwhere\b"
+    r"|\bsuccursales?\b|\bmagasins?\b|\bboutiques?\b|\bcaf[eé]s?\b|\b(?:les)?quelles?\b|\bo[uù]\b",
     re.IGNORECASE,
 )
 _REC_INTENT_RE = re.compile(
-    r"\b(?:visitar|visitas|visita|visito|inspeccion\w*|recom(?:iend|end)\w*|recomendaci[oó]n(?:es)?|"
+    r"\b(?:visitar|visito|visite|inspeccion\w*|auditar|recom(?:iend|end)\w*|recomendaci[oó]n(?:es)?|"
+    r"suger[ií]s|sugier\w*|sugerencia(?:s)?|"
     r"atenci[oó]n\s+prioritaria|requieren\s+atenci[oó]n|necesitan\s+atenci[oó]n|"
-    r"concentrar\s+(?:mis\s+)?visitas|prioriz\w*\s+(?:para\s+)?(?:visitar|visita|revisar|atender)|"
-    r"conviene\s+(?:ir|revisar|visitar|inspeccionar)|deber[ií]a\s+(?:visitar|ir|inspeccionar))\b",
+    r"concentrar\s+(?:mis\s+)?visitas|prioriz\w*\s+(?:para\s+)?(?:visitar|visita|revisar|atender|inspeccionar|auditar)|"
+    r"(?:conviene|deber[ií]a(?:mos)?|habr[ií]a\s+que|hay\s+que|vale\s+la\s+pena)\s+(?:ir(?:\s+a)?|revisar|visitar|inspeccionar|auditar|atender)|"
+    r"visit|inspect\w*|review|audit|recommend\w*|suggest\w*|prioritiz\w*|"
+    r"(?:need|require)\s+(?:urgent\s+|priority\s+)?attention|"
+    r"should\s+(?:i|we)\s+(?:visit|inspect|review|audit|check|prioritize)|"
+    r"visiter|inspecter|examiner|auditer|recommand\w*|sugg[eé]r\w*|prioris\w*|"
+    r"besoin\s+d['’]attention)\b",
     re.IGNORECASE,
 )
-_DESCRIPTIVE_RE = re.compile(r"\bcu[aá]nt[oa]s\b|\btasa\b|\bpromedio\b|\bm[aá]s\s+(?:pedidos|quejas)\b", re.IGNORECASE)
+_DESCRIPTIVE_RE = re.compile(
+    r"\b(?:cu[aá]nt[oa]s|tasa|promedio|ranking|top\s+\d+|m[aá]s\s+(?:pedidos|quejas)|mayor\s+(?:tasa|cantidad)|menor\s+(?:tasa|cantidad)|"
+    r"how\s+many|rate|average|top\s+(?:\d+|three|five|ten)|most\s+(?:orders|complaints)|highest|lowest|"
+    r"combien|taux|moyenne|classement|plus\s+de\s+(?:commandes|plaintes))\b",
+    re.IGNORECASE,
+)
+_EXPLICIT_REC_VERB_RE = re.compile(
+    r"\b(?:visitar|visito|inspeccion\w*|auditar|recom(?:iend|end)\w*|suger[ií]s|sugier\w*|"
+    r"visit|inspect\w*|recommend\w*|prioritiz\w*|"
+    r"visiter|inspecter|recommand\w*|prioris\w*)\b",
+    re.IGNORECASE,
+)
 
 
 def is_recommendation_request(question: str) -> bool:
@@ -76,7 +65,7 @@ def is_recommendation_request(question: str) -> bool:
     q = (question or "").strip()
     if not _REC_INTENT_RE.search(q):
         return False
-    if _DESCRIPTIVE_RE.search(q) and not re.search(r"\b(?:visitar|visitas|inspeccion\w*|recomiend\w*)\b", q, re.IGNORECASE):
+    if _DESCRIPTIVE_RE.search(q) and not _EXPLICIT_REC_VERB_RE.search(q):
         return False
     return bool(_REC_TARGET_RE.search(q))
 
@@ -181,14 +170,6 @@ class Agent:
             "warnings": [],
         }
         trace: list[dict] = []
-
-        if is_non_spanish_query(question):
-            m["latency_s"] = round(time.perf_counter() - t0, 3)
-            return AgentResult(
-                question,
-                "Solo atiendo consultas en español. Por favor, formulá tu pregunta en español.",
-                "text", None, m, trace,
-            )
 
         history = [be.user_content(question)]
         answer, kind, data, error, json_retries = "", "text", None, None, 0

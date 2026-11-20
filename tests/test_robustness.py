@@ -52,13 +52,69 @@ class _SeqBackend:
     ("¿Dónde debería concentrar mis visitas esta semana?", True),
     ("¿A qué tiendas me recomendás ir a revisar?", True),
     ("Priorizá los locales que necesitan atención o visita", True),
+    ("¿Qué sucursales debería revisar esta semana?", True),
+    ("¿Qué cafeterías conviene auditar?", True),
+    ("¿Qué locales me sugerís visitar?", True),
+    ("Which branches should I visit this week?", True),
+    ("Recommend three stores to inspect.", True),
+    ("Quelles succursales devrais-je visiter ?", True),
     ("¿Cuántas sucursales tiene la región Costa?", False),
+    ("¿Cuántas visitas recibió S012?", False),
+    ("¿Cuáles son las tres sucursales con más quejas?", False),
+    ("Mostrame el ranking de sucursales por tasa de quejas.", False),
+    ("Top five branches by complaint rate.", False),
     ("¿Cuál fue la tasa de quejas de la sucursal S012?", False),
     ("¿Cuáles son las 3 sucursales con más quejas por cada 1,000 pedidos en febrero de 2026?", False),
     ("¿Qué sucursal tuvo más pedidos en la semana del 2 de marzo de 2026?", False),
 ])
 def test_detector_solicitud_recomendaciones(q, esperado):
     assert is_recommendation_request(q) is esperado
+
+
+def test_recomendacion_multilingue_simulada_devuelve_json_en_espanol(db_path):
+    from app.tools import TOOL_SPECS
+    submit_spec = next(s for s in TOOL_SPECS if s["name"] == "submit_recommendations")
+    for k in ("motivo", "evidencia", "accion_sugerida"):
+        assert "español" in submit_spec["parameters"]["properties"]["recomendaciones"]["items"]["properties"][k]["description"].lower()
+
+    def submit_from_hist(h):
+        row = h[-1]["results"][0][1]["rows"][0]
+        rec = [{
+            "sucursal_id": row[0],
+            "motivo": "Presenta una tasa elevada de quejas.",
+            "evidencia": f"{row[1]} quejas sobre {row[2]} pedidos válidos.",
+            "accion_sugerida": "Realizar una inspección operativa en tienda.",
+        }]
+        return Turn(calls=[ToolCall("submit_recommendations", {"recomendaciones": rec})], content={})
+
+    for pregunta in ("Which branches should I visit this week?", "Quelles succursales devrais-je visiter ?"):
+        steps = [
+            Turn(calls=[ToolCall("run_sql", {"query": "SELECT sucursal_id, quejas, pedidos_validos FROM v_metricas_sucursal WHERE sucursal_id='S012'"})], content={}),
+            submit_from_hist,
+        ]
+        ag = Agent(Config(api_key="k"), backend=_SeqBackend(steps), db_path=db_path)
+        try:
+            res = ag.ask(pregunta)
+            assert res.kind == "json" and len(res.data) == 1
+            assert res.data[0]["sucursal_id"] == "S012"
+            assert "quejas" in res.data[0]["evidencia"]
+        finally:
+            ag.close()
+
+
+@pytest.mark.parametrize("sid", ["S301", "S888", "Z999"])
+def test_sucursal_inexistente_generalizada(db_path, sid):
+    tb = ToolBox(db_path)
+    try:
+        r = tb.get_branch_summary(sid)
+        assert r["ok"] is False and "no existe" in r["error"].lower()
+        with pytest.raises(RecommendationError, match="no existe"):
+            validate_recommendations(
+                [{"sucursal_id": sid, "motivo": "m", "evidencia": "1", "accion_sugerida": "a"}],
+                tb._valid_ids,
+            )
+    finally:
+        tb.close()
 
 
 def test_recomendacion_rechaza_narrativa_y_reintenta_hasta_json(db_path):

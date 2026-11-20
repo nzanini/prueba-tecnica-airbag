@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import check_models, config as config_mod
-from app.agent import Agent, is_non_spanish_query
+from app.agent import Agent
 from app.config import Config, load_config
 from app.llm import GeminiBackend, LLMError, classify_error
 
@@ -192,20 +192,24 @@ def test_preserva_historial_de_herramientas_al_cambiar_de_modelo(tmp_path):
         ag.close()
 
 
-def test_consulta_en_otro_idioma_responde_en_espanol_sin_llamar_llm(tmp_path):
+@pytest.mark.parametrize("pregunta", [
+    "How many branches are there in Costa?",
+    "Combien de succursales y a-t-il dans la région Costa ?",
+])
+def test_consulta_en_otro_idioma_no_se_rechaza_y_consulta_llm(tmp_path, pregunta):
     from app import db
     dbp = tmp_path / "t.duckdb"
     db.build_database(db.PROCESSED_DIR, dbp)
-    client = FakeClient(lambda m, c, i: _resp("should not run"))
+    client = FakeClient(lambda m, c, i: _resp("30 sucursales en la región Costa."))
     cfg = _cfg()
-    ag = Agent(cfg, backend=GeminiBackend(cfg, [], "sys", client=client), db_path=dbp)
+    ag = Agent(cfg, backend=GeminiBackend(cfg, [], ag_sys := "sys", client=client), db_path=dbp)
     try:
-        assert is_non_spanish_query("How many branches are there in Costa?")
-        assert not is_non_spanish_query("¿Cuántas sucursales tiene Costa?")
-        assert not is_non_spanish_query("tasa Centro")
-        res = ag.ask("How many branches are there in Costa?")
-        assert res.ok and "español" in res.answer.lower()
-        assert res.metrics["llm_attempts"] == 0 and client.calls == []
+        res = ag.ask(pregunta)
+        assert res.ok and res.kind == "text"
+        assert "30 sucursales" in res.answer
+        assert res.metrics["llm_attempts"] == 1 and len(client.calls) == 1
+        assert "Aunque el usuario formule la consulta en otro idioma" in ag.system_prompt
+        assert "SIEMPRE en español" in ag.system_prompt
     finally:
         ag.close()
 
