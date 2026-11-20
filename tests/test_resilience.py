@@ -200,16 +200,37 @@ def test_consulta_en_otro_idioma_no_se_rechaza_y_consulta_llm(tmp_path, pregunta
     from app import db
     dbp = tmp_path / "t.duckdb"
     db.build_database(db.PROCESSED_DIR, dbp)
-    client = FakeClient(lambda m, c, i: _resp("30 sucursales en la región Costa."))
+    client = FakeClient(lambda m, c, i: _resp("Respondo en español porque estoy configurado para hacerlo. La región Costa tiene 30 sucursales."))
     cfg = _cfg()
-    ag = Agent(cfg, backend=GeminiBackend(cfg, [], ag_sys := "sys", client=client), db_path=dbp)
+    ag = Agent(cfg, backend=GeminiBackend(cfg, [], "sys", client=client), db_path=dbp)
     try:
         res = ag.ask(pregunta)
         assert res.ok and res.kind == "text"
+        assert "Respondo en español porque estoy configurado para hacerlo." in res.answer
         assert "30 sucursales" in res.answer
         assert res.metrics["llm_attempts"] == 1 and len(client.calls) == 1
-        assert "Aunque el usuario formule la consulta en otro idioma" in ag.system_prompt
-        assert "SIEMPRE en español" in ag.system_prompt
+        assert "Respondo en español porque estoy configurado para hacerlo." in ag.system_prompt
+        assert "Solo puedo ayudarte con consultas relacionadas con los datos de Café Tostadero." in ag.system_prompt
+    finally:
+        ag.close()
+
+
+def test_consulta_en_espanol_sin_aclaracion_y_fuera_de_dominio(tmp_path):
+    from app import db
+    dbp = tmp_path / "t.duckdb"
+    db.build_database(db.PROCESSED_DIR, dbp)
+    resps = iter([
+        _resp("30 sucursales."),
+        _resp("Solo puedo ayudarte con consultas relacionadas con los datos de Café Tostadero."),
+    ])
+    client = FakeClient(lambda m, c, i: next(resps))
+    cfg = _cfg()
+    ag = Agent(cfg, backend=GeminiBackend(cfg, [], "sys", client=client), db_path=dbp)
+    try:
+        r_es = ag.ask("¿Cuántas sucursales tiene Costa?")
+        assert r_es.ok and "Respondo en español porque estoy configurado para hacerlo." not in r_es.answer
+        r_ood = ag.ask("¿Cuál es la capital de Francia?")
+        assert r_ood.ok and r_ood.answer == "Solo puedo ayudarte con consultas relacionadas con los datos de Café Tostadero."
     finally:
         ag.close()
 

@@ -58,6 +58,7 @@ class _SeqBackend:
     ("Which branches should I visit this week?", True),
     ("Recommend three stores to inspect.", True),
     ("Quelles succursales devrais-je visiter ?", True),
+    ("Quelles sont les trois succursales que je devrais visiter selon les données de janvier à mars 2026 ?", True),
     ("¿Cuántas sucursales tiene la región Costa?", False),
     ("¿Cuántas visitas recibió S012?", False),
     ("¿Cuáles son las tres sucursales con más quejas?", False),
@@ -115,6 +116,29 @@ def test_sucursal_inexistente_generalizada(db_path, sid):
             )
     finally:
         tb.close()
+
+
+def test_periodo_no_disponible_y_pregunta_libre_sin_criterio(db_path):
+    tb = ToolBox(db_path)
+    try:
+        r_out = tb.run_sql("SELECT count(*) FROM v_metricas_dia WHERE fecha >= DATE '2026-05-01'")
+        assert r_out["ok"] is True and r_out["rows"] == [[0]]
+    finally:
+        tb.close()
+
+    # El agente responde preguntas libres sin criterios en text_criteria.json; el evaluador marca texto largo sin criterio como not_evaluable.
+    ag = Agent(Config(api_key="k"), backend=_SeqBackend([Turn(text="Respuesta libre extensa sobre la evolución operativa.", content={})]), db_path=db_path)
+    try:
+        res = ag.ask("¿Cómo fue la evolución operativa general de la red?")
+        assert res.ok and res.kind == "text"
+    finally:
+        ag.close()
+    ev = evaluate_item(
+        {"id": "FREE01", "pregunta": "¿Cómo fue la evolución operativa general?", "respuesta_esperada": "Descripción extensa esperada sobre la evolución operativa", "tipo": "texto", "tolerancia": None},
+        res.answer,
+        {},
+    )
+    assert ev["estado"] == "not_evaluable"
 
 
 def test_recomendacion_rechaza_narrativa_y_reintenta_hasta_json(db_path):

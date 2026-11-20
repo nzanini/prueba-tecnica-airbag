@@ -87,7 +87,9 @@ python -m app.prepare_data    # Limpieza reproducible -> data/processed/ + cafe_
 python -m app.check_models
 ```
 
-## 7. Hacer preguntas en español desde terminal
+## 7. Hacer preguntas libres desde terminal
+
+Podés formular cualquier pregunta nueva sobre Café Tostadero sin configurar criterios ni modificar archivos (el agente consulta DuckDB directamente mediante herramientas). Si la pregunta está en otro idioma (p. ej. inglés o francés), el agente responde en español anteponiendo `"Respondo en español porque estoy configurado para hacerlo."` (salvo en recomendaciones JSON, donde devuelve únicamente el array JSON en español).
 
 ```bash
 python -m app.agent --question "¿Cuántas sucursales tiene la región Costa?"
@@ -156,6 +158,8 @@ Y evaluarlo con:
 ```bash
 python -m eval.run --questions ruta/a/tus_preguntas.jsonl --out-dir eval/results/local/externo --save-traces
 ```
+
+> **Diferencia entre agente y evaluador:** el agente (`app.agent`) no necesita criterios previos para responder preguntas nuevas. En cambio, el scoring automático (`eval/run.py` + `eval/scoring.py`) compara contra `respuesta_esperada`, `tipo` y `tolerancia`: califica automáticamente `numero`, `lista` y `texto` corto (≤ 3 palabras normalizadas); las respuestas de `texto` extenso sin regla configurada en `eval/text_criteria.json` o `eval/robustness_criteria.json` quedan marcadas como `not_evaluable` para revisión manual, sin afectar la capacidad del agente para responderlas.
 
 *(También podés validar un JSON de recomendaciones contra DuckDB sin llamar al LLM usando `python -m eval.run --check-recommendations ruta/al/archivo.json`.)*
 
