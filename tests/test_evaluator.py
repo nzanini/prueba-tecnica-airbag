@@ -516,3 +516,136 @@ def test_resume_compatible_con_resultados_historicos_sin_hashes(tmp_path):
 
     s = eval_run.run_evaluation(q_file, out_dir=out, resume=True, agent_factory=lambda: FakeAgent())
     assert s["counts"]["correct"] == 2
+
+
+# ---------------------------------------------- Fase 5G: coherencia de errores y CLI
+def test_http_504_y_recuperacion_proveedor_coherentes_en_reportes(tmp_path):
+    from types import SimpleNamespace
+    from app.agent import Agent
+    from app.config import Config
+    from app.llm import OpenRouterBackend
+    from app.tools import TOOL_SPECS
+
+    p_db = tmp_path / "t.duckdb"
+    db.build_database(db.PROCESSED_DIR, p_db)
+    cfg = Config(
+        provider="openrouter",
+        api_key="sk-or-v1-secret-token-504",
+        model="google/gemini-3.8-flash",
+        fallback_models=(),
+        max_retries_per_model=1,
+        retry_base_delay_s=0.0,
+    )
+
+    class Err504(Exception):
+        status_code = 504
+
+    class Err503(Exception):
+        status_code = 503
+
+    def _msg(text):
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=text, tool_calls=None), finish_reason="stop")],
+            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+            model="google/gemini-3.8-flash",
+        )
+
+    # 1) HTTP 504 definitivo -> counts.provider_error == 1 y errors_by_source.provider_errors == 1
+    calls_504 = []
+    client_504 = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
+        create=lambda **kw: (calls_504.append(kw), (_ for _ in ()).throw(Err504("timeout sk-or-v1-secret-token-504")))[1]
+    )))
+    out_504 = tmp_path / "out_504"
+    s_504 = eval_run.run_evaluation(
+        EJEMPLO, out_dir=out_504, ids=["P01"], save_traces=True,
+        agent_factory=lambda: Agent(cfg, backend=OpenRouterBackend(cfg, TOOL_SPECS, "sys", client=client_504), db_path=p_db),
+    )
+    assert s_504["counts"]["provider_error"] == 1
+    assert s_504["errors_by_source"]["provider_errors"] == 1
+    assert s_504["errors_by_source"]["agent_errors"] == 0
+    md_504 = (out_504 / "report.md").read_text(encoding="utf-8")
+    assert "proveedor=1" in md_504
+    for fname in ("results.jsonl", "summary.json", "report.md", "traces.jsonl"):
+        assert "sk-or-v1-secret-token-504" not in (out_504 / fname).read_text(encoding="utf-8")
+
+    # 2) HTTP 503 recuperado tras reintento -> correct == 1, provider_errors == 0, llm.total_failures == 1
+    seq = [Err503("temporarily unavailable"), _msg("30 sucursales.")]
+    client_rec = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
+        create=lambda **kw: (_ for _ in ()).throw(seq.pop(0)) if isinstance(seq[0], Exception) else seq.pop(0)
+    )))
+    out_rec = tmp_path / "out_rec"
+    s_rec = eval_run.run_evaluation(
+        EJEMPLO, out_dir=out_rec, ids=["P01"],
+        agent_factory=lambda: Agent(cfg, backend=OpenRouterBackend(cfg, TOOL_SPECS, "sys", client=client_rec), db_path=p_db),
+    )
+    assert s_rec["counts"]["correct"] == 1
+    assert s_rec["errors_by_source"]["provider_errors"] == 0
+    assert s_rec["llm"]["total_failures"] == 1 and s_rec["llm"]["total_retries"] == 1
+
+
+def test_coherencia_errors_by_source_todos_los_origenes(tmp_path):
+    records = [
+        {"id": "Q1", "pregunta": "q1", "tipo": "numero", "esperado": 1, "estado": "provider_error",
+         "error_source": "provider", "latencia_s": 1.0},
+        {"id": "Q2", "pregunta": "q2", "tipo": "texto", "esperado": "x", "estado": "provider_error",
+         "error_source": "agent", "latencia_s": 1.0},
+        {"id": "Q3", "pregunta": "q3", "tipo": "numero", "esperado": 1, "estado": "incorrect",
+         "error_source": "tool", "latencia_s": 1.0},
+        {"id": "Q4", "pregunta": "q4", "tipo": "numero", "esperado": 1, "estado": "extraction_error",
+         "error_source": "evaluator", "latencia_s": 1.0},
+        # Registro histórico sin error_source
+        {"id": "Q5", "pregunta": "q5", "tipo": "numero", "esperado": 1, "estado": "provider_error",
+         "latencia_s": 1.0},
+    ]
+    summary = eval_run.summarize(records, "real", EJEMPLO)
+    ebs = summary["errors_by_source"]
+    assert summary["counts"]["provider_error"] == 3
+    assert ebs["provider_errors"] == 2
+    assert ebs["agent_errors"] == 1
+    assert ebs["tool_errors"] == 1
+    assert ebs["evaluator_errors"] == 1
+    assert ebs["incorrect_answers"] == 1
+    md = eval_run.render_markdown(summary, records)
+    assert "proveedor=2, agente=1, herramienta=1, evaluador=1" in md
+
+
+def test_cli_errores_separan_stdout_y_stderr_sin_secretos(monkeypatch, capsys):
+    from app import agent as agent_mod
+    from app.config import Config
+
+    class StubAgent:
+        def __init__(self, res):
+            self.res = res
+        def ask(self, q):
+            return self.res
+        def close(self):
+            pass
+
+    monkeypatch.setattr(agent_mod, "load_config", lambda **kw: Config(api_key="sk-secret-cli"))
+
+    # Error de proveedor en pregunta normal: stdout breve, stderr con [error:proveedor]
+    r_prov = AgentResult("q", "No pude completar la consulta: 504", "error", None,
+                         {"model": "m", "model_configured": "m", "fallback_used": False,
+                          "llm_attempts": 1, "llm_calls": 0, "llm_failures": 1, "retries": 0,
+                          "model_switches": 0, "tool_calls": 0, "tool_errors": 0, "latency_s": 1.0,
+                          "input_tokens": None, "output_tokens": None, "attempts": [],
+                          "errors": ["m: timeout(504)"], "warnings": [],
+                          "error_source": "provider", "error_type": "provider_error"})
+    monkeypatch.setattr(agent_mod, "Agent", lambda cfg: StubAgent(r_prov))
+    code = agent_mod.main(["-q", "¿Cuántas sucursales?"])
+    cap = capsys.readouterr()
+    assert code == 1
+    assert "No pude completar la consulta" in cap.out
+    assert "[error:proveedor]" in cap.err and "504" in cap.err
+    assert "sk-secret-cli" not in cap.out + cap.err
+
+    # Error de agente en recomendaciones: stdout == "[]", stderr con [error:agente]
+    r_ag = AgentResult("q", "[]", "error", [],
+                       {**r_prov.metrics, "errors": ["Se alcanzó el límite de 10 llamadas."],
+                        "error_source": "agent", "error_type": "budget_exhausted"})
+    monkeypatch.setattr(agent_mod, "Agent", lambda cfg: StubAgent(r_ag))
+    code2 = agent_mod.main(["-q", "¿Qué sucursales debería visitar?"])
+    cap2 = capsys.readouterr()
+    assert code2 == 1
+    assert cap2.out.strip() == "[]"
+    assert "[error:agente]" in cap2.err

@@ -426,11 +426,13 @@ def _diag(result: AgentResult, verbose: bool) -> None:
     if not verbose:
         return
     m = result.metrics
+    src_info = f" origen={m.get('error_source')} tipo={m.get('error_type')}" if m.get("error_source") else ""
     print(f"[diag] modelo_usado={m['model']} (config={m['model_configured']}, fallback={m['fallback_used']}) "
           f"intentos_llm={m['llm_attempts']} ok={m['llm_calls']} fallos={m['llm_failures']} "
           f"reintentos={m['retries']} cambios_modelo={m['model_switches']} "
           f"herramientas={m['tool_calls']} errores_herr={m['tool_errors']} "
-          f"latencia={m['latency_s']}s tokens_in={m['input_tokens']} tokens_out={m['output_tokens']}", file=sys.stderr)
+          f"latencia={m['latency_s']}s tokens_in={m['input_tokens']} tokens_out={m['output_tokens']}{src_info}",
+          file=sys.stderr)
     for a in m["attempts"]:
         if not a["ok"] or a.get("fallback_from"):
             print(f"[diag] intento {a['model']}#{a['attempt']} ok={a['ok']} lat={a['latency_s']}s "
@@ -485,8 +487,11 @@ def main(argv: list[str] | None = None) -> int:
             res = agent.ask(q)
             print(res.answer, flush=True)
             _diag(res, args.verbose)
-            if res.kind == "error" and not args.verbose and res.answer == "[]":
-                print(f"[error] {'; '.join(res.metrics.get('errors') or [])}", file=sys.stderr)
+            if res.kind == "error" and not args.verbose:
+                src = {"provider": "proveedor", "agent": "agente", "tool": "herramienta"}.get(
+                    res.metrics.get("error_source") or "", "sistema"
+                )
+                print(f"[error:{src}] {'; '.join(res.metrics.get('errors') or [])}", file=sys.stderr)
             if args.log_file:
                 append_run_log(args.log_file, res)
             if res.kind == "error":

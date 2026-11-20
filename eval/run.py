@@ -144,8 +144,12 @@ def summarize(records: list[dict], mode: str, questions_path: Path,
         for k, v in (r.get("tool_errors_by_type") or {}).items():
             err_by_type[k] = err_by_type.get(k, 0) + int(v)
 
-    prov_errs = sum(1 for r in records if r["estado"] == "provider_error" and r.get("error_source") != "agent")
-    agent_errs = sum(1 for r in records if r["estado"] == "provider_error" and r.get("error_source") == "agent")
+    prov_errs = sum(
+        1 for r in records
+        if r["estado"] == "provider_error" and r.get("error_source") not in ("agent", "tool")
+    )
+    agent_errs = sum(1 for r in records if r.get("error_source") == "agent")
+    tool_errs_source = sum(1 for r in records if r.get("error_source") == "tool")
     eval_errs = counts["extraction_error"] + counts["not_evaluable"]
 
     out = {
@@ -162,6 +166,7 @@ def summarize(records: list[dict], mode: str, questions_path: Path,
         "errors_by_source": {
             "provider_errors": prov_errs,
             "agent_errors": agent_errs,
+            "tool_errors": tool_errs_source,
             "evaluator_errors": eval_errs,
             "incorrect_answers": counts["incorrect"],
         },
@@ -251,8 +256,8 @@ def render_markdown(summary: dict, records: list[dict]) -> str:
         f"reintentos={llm['total_retries']}, fallbacks={llm['fallback_questions']} (modelos: {llm['models_used']})",
         f"- Herramientas: llamadas={tools['total_calls']}, errores={tools['total_errors']}, "
         f"recuperaciones={tools.get('total_recoveries', 0)} (por tipo: {tools.get('errors_by_type', {})})",
-        f"- Errores por origen: proveedor={ebs.get('provider', 0)}, agente={ebs.get('agent', 0)}, "
-        f"herramienta={ebs.get('tool', 0)}, evaluador={ebs.get('evaluator', 0)}",
+        f"- Errores por origen: proveedor={ebs.get('provider_errors', 0)}, agente={ebs.get('agent_errors', 0)}, "
+        f"herramienta={ebs.get('tool_errors', 0)}, evaluador={ebs.get('evaluator_errors', 0)}",
         f"- Tokens conocidos: entrada={tc['input_tokens']}, salida={tc['output_tokens']} "
         f"(preguntas con tokens parciales/desconocidos: {tc['tokens_partial_questions']})",
         f"- Costo estimado (USD): {tc['known_cost_usd'] if tc['known_cost_usd'] is not None else 'desconocido'} "
